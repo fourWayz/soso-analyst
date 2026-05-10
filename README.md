@@ -18,14 +18,186 @@ SoSo Analyst is the first on-chain financial **research agency** built on SoSoVa
 
 ## Architecture
 
+### System Overview
+
 ```
-SoSoValue Terminal API  ─┐
-  /news, /etfs           │
-  /indices, /macro       ├──► Next.js API Proxy ──► Claude AI ──► Research Report
-  /currencies            │                                            │
-SoDEX Spot API ─────────┘    ←───────────────────────────────── Trade Gate ──► SoDEX
-  /markets/tickers
-  /markets/{symbol}/orderbook
+┌─────────────────────────────────────────────────────────────────────┐
+│                         BROWSER / CLIENT                            │
+│                                                                     │
+│   Landing Page   Dashboard   Daily Brief   Asset Dive   Theme       │
+└────────┬─────────────┬────────────┬────────────┬──────────┬─────────┘
+         │             │            │            │          │
+         ▼             ▼            └─────┬──────┘          │
+┌─────────────────────────────────────────▼──────────────────▼───────┐
+│                    NEXT.JS API LAYER  (server-side)                 │
+│                                                                     │
+│   /api/sosovalue        /api/sodex        /api/generate-report      │
+│   (proxy + auth)        (proxy)           (Claude synthesis)        │
+└────────┬──────────────────┬──────────────────┬─────────────────────┘
+         │                  │                  │
+         ▼                  ▼                  ▼
+┌────────────────┐ ┌────────────────┐ ┌────────────────────┐
+│ SoSoValue API  │ │   SoDEX API    │ │  Anthropic Claude  │
+│ openapi.soso.. │ │ mainnet-gw..   │ │  claude-sonnet-4-6 │
+│                │ │                │ │                    │
+│ /news/hot      │ │ /markets/      │ │  ReportInput  →    │
+│ /etfs/summary  │ │   tickers      │ │  GeneratedReport   │
+│ /indices       │ │ /markets/      │ │                    │
+│ /macro/events  │ │   {sym}/klines │ │  signal + sections │
+│ /currencies/   │ │ /markets/      │ │  risks + trade idea│
+│   {id}/snap    │ │   {sym}/book   │ │                    │
+└────────────────┘ └────────────────┘ └────────────────────┘
+```
+
+---
+
+### Daily Market Brief Flow
+
+```
+User clicks "Generate Daily Brief"
+         │
+         ▼
+┌────────────────────────────────────────────┐
+│  PARALLEL DATA FETCH  (Promise.all)        │
+│                                            │
+│  SoSoValue /news/hot        → 12 articles │
+│  SoSoValue /etfs/summary    → BTC flows   │
+│            ?symbol=BTC                     │
+│            &country_code=US                │
+│  SoSoValue /indices         → ticker[]    │
+│    └─► /indices/{t}/market-snapshot ×4    │
+│  SoSoValue /macro/events    → events      │
+└──────────────────┬─────────────────────────┘
+                   │
+                   ▼
+┌────────────────────────────────────────────┐
+│  BUILD ReportInput                         │
+│                                            │
+│  type: "daily_brief"                       │
+│  news[]        ← /news/hot (id,title,      │
+│                   release_time, content)   │
+│  etfFlows      ← total_net_inflow,         │
+│                   total_net_assets, date   │
+│  indices[]     ← price, change_pct_24h    │
+│  macroEvents[] ← event, impact, actual    │
+└──────────────────┬─────────────────────────┘
+                   │
+                   ▼
+┌────────────────────────────────────────────┐
+│  POST /api/generate-report                 │
+│  Claude Sonnet 4.6                         │
+│                                            │
+│  Prompt: live data context block           │
+│  Output: GeneratedReport JSON              │
+│    ├─ title, subtitle                      │
+│    ├─ signal: BULLISH/BEARISH/NEUTRAL      │
+│    ├─ confidence: 0–100                    │
+│    ├─ executiveSummary                     │
+│    ├─ sections[] (heading + content)       │
+│    ├─ keyRisks[]                           │
+│    ├─ actionableInsight                    │
+│    ├─ tradeIdea (asset, direction,         │
+│    │             targetSymbol)             │
+│    └─ citations[]                          │
+└──────────────────┬─────────────────────────┘
+                   │
+                   ▼
+         ReportView component
+                   │
+                   ▼
+┌────────────────────────────────────────────┐
+│  TRADE GATE  (if tradeIdea present)        │
+│                                            │
+│  Show: direction, symbol, rationale        │
+│  Require: risk checkbox ✓                  │
+│  On confirm: open SoDEX at target pair     │
+└────────────────────────────────────────────┘
+```
+
+---
+
+### Asset Deep Dive Flow
+
+```
+User selects asset (BTC / ETH / SOL / custom)
+         │
+         ▼
+┌────────────────────────────────────────────┐
+│  PARALLEL DATA FETCH                       │
+│                                            │
+│  SoSoValue /news                           │
+│    ?category={SYMBOL}   → filtered news   │
+│  SoSoValue /currencies/{id}               │
+│    /market-snapshot     → price, vol,     │
+│                           marketCap       │
+│  SoSoValue /currencies/{id}               │
+│    /klines?interval=1d  → OHLCV 30d      │
+│  SoSoValue /etfs/summary                  │
+│    ?symbol=BTC          → macro context  │
+└──────────────────┬─────────────────────────┘
+                   │
+                   ▼
+         type: "asset_deep_dive"
+         asset: "BTC" | "ETH" | ...
+                   │
+                   ▼
+         Claude Sonnet → GeneratedReport
+                   │
+                   ▼
+         ReportView + Trade Gate
+```
+
+---
+
+### Theme Report Flow
+
+```
+User selects theme  (AI Tokens / RWA / DeFi / L1 / etc.)
+         │
+         ▼
+┌────────────────────────────────────────────┐
+│  PARALLEL DATA FETCH                       │
+│                                            │
+│  SoSoValue /news/featured  → top stories  │
+│    └─ filtered by theme categories        │
+│  SoSoValue /etfs/summary   → flow context │
+│  SoSoValue /currencies     → sector data  │
+│    /sector-spotlight                       │
+│  SoSoValue /indices        → SSI perf.   │
+│    └─ /market-snapshot ×4                 │
+└──────────────────┬─────────────────────────┘
+                   │
+                   ▼
+         type: "theme_report"
+         theme: "AI Tokens" | "RWA" | ...
+                   │
+                   ▼
+         Claude Sonnet → GeneratedReport
+                   │
+                   ▼
+         ReportView + Trade Gate
+```
+
+---
+
+### API Proxy Design (Security)
+
+```
+Browser                Next.js Server              External API
+  │                         │                           │
+  │  GET /api/sosovalue     │                           │
+  │  ?path=/news/hot        │                           │
+  ├────────────────────────►│                           │
+  │                         │  GET openapi.sosovalue    │
+  │                         │  .com/openapi/v1/news/hot │
+  │                         │  x-soso-api-key: ****     │
+  │                         ├──────────────────────────►│
+  │                         │                           │
+  │                         │◄──────────────────────────┤
+  │                         │  { code:0, data:{...} }   │
+  │◄────────────────────────┤                           │
+  │  JSON response          │                           │
+  │  (key never exposed)    │                           │
 ```
 
 ## SoSoValue API Endpoints Used
@@ -49,7 +221,7 @@ SoDEX Spot API ─────────┘    ←─────────�
 ## Setup
 
 ```bash
-git clone <repo>
+git clone https://github.com/fourWayz/soso-analyst
 cd soso-analyst
 npm install
 
@@ -96,8 +268,3 @@ ANTHROPIC_API_KEY=      # Anthropic API key (claude-sonnet-4-6)
 
 **Unique value**: Every other submission produces trade signals. SoSo Analyst produces *research* — the reasoning behind the signal, with citations, risk factors, and a complete narrative. This is the Bloomberg, not the Reuters ticker.
 
-## Team
-
-- **Contact**: oladayoahmod1122@gmail.com
-- **Wave**: 1 (Concept / Early Prototype)
-- **Buildathon**: SoSoValue Buildathon 2026
