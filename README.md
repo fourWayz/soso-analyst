@@ -20,184 +20,124 @@ SoSo Analyst is the first on-chain financial **research agency** built on SoSoVa
 
 ### System Overview
 
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│                         BROWSER / CLIENT                            │
-│                                                                     │
-│   Landing Page   Dashboard   Daily Brief   Asset Dive   Theme       │
-└────────┬─────────────┬────────────┬────────────┬──────────┬─────────┘
-         │             │            │            │          │
-         ▼             ▼            └─────┬──────┘          │
-┌─────────────────────────────────────────▼──────────────────▼───────┐
-│                    NEXT.JS API LAYER  (server-side)                 │
-│                                                                     │
-│   /api/sosovalue        /api/sodex        /api/generate-report      │
-│   (proxy + auth)        (proxy)           (Claude synthesis)        │
-└────────┬──────────────────┬──────────────────┬─────────────────────┘
-         │                  │                  │
-         ▼                  ▼                  ▼
-┌────────────────┐ ┌────────────────┐ ┌────────────────────┐
-│ SoSoValue API  │ │   SoDEX API    │ │  Anthropic Claude  │
-│ openapi.soso.. │ │ mainnet-gw..   │ │  claude-sonnet-4-6 │
-│                │ │                │ │                    │
-│ /news/hot      │ │ /markets/      │ │  ReportInput  →    │
-│ /etfs/summary  │ │   tickers      │ │  GeneratedReport   │
-│ /indices       │ │ /markets/      │ │                    │
-│ /macro/events  │ │   {sym}/klines │ │  signal + sections │
-│ /currencies/   │ │ /markets/      │ │  risks + trade idea│
-│   {id}/snap    │ │   {sym}/book   │ │                    │
-└────────────────┘ └────────────────┘ └────────────────────┘
+```mermaid
+graph TD
+    subgraph Browser["Browser / Client"]
+        LP[Landing Page]
+        DB[Dashboard]
+        DR[Daily Brief]
+        AD[Asset Dive]
+        TR[Theme Report]
+    end
+
+    subgraph Proxy["Next.js API Layer (server-side)"]
+        PS[/api/sosovalue\nproxy + auth]
+        PD[/api/sodex\nproxy]
+        PG[/api/generate-report\nClaude synthesis]
+    end
+
+    subgraph External["External APIs"]
+        SV["SoSoValue Terminal\nopenapi.sosovalue.com\n/news /etfs /indices\n/macro /currencies"]
+        SD["SoDEX Spot\nmainnet-gw.sodex.dev\n/markets/tickers\n/markets/{sym}/klines"]
+        AI["Anthropic Claude\nclaude-sonnet-4-6\nReportInput → GeneratedReport\nsignal + sections + trade idea"]
+    end
+
+    Browser -->|API calls| Proxy
+    PS --> SV
+    PD --> SD
+    PG --> AI
 ```
 
 ---
 
 ### Daily Market Brief Flow
 
-```
-User clicks "Generate Daily Brief"
-         │
-         ▼
-┌────────────────────────────────────────────┐
-│  PARALLEL DATA FETCH  (Promise.all)        │
-│                                            │
-│  SoSoValue /news/hot        → 12 articles │
-│  SoSoValue /etfs/summary    → BTC flows   │
-│            ?symbol=BTC                     │
-│            &country_code=US                │
-│  SoSoValue /indices         → ticker[]    │
-│    └─► /indices/{t}/market-snapshot ×4    │
-│  SoSoValue /macro/events    → events      │
-└──────────────────┬─────────────────────────┘
-                   │
-                   ▼
-┌────────────────────────────────────────────┐
-│  BUILD ReportInput                         │
-│                                            │
-│  type: "daily_brief"                       │
-│  news[]        ← /news/hot (id,title,      │
-│                   release_time, content)   │
-│  etfFlows      ← total_net_inflow,         │
-│                   total_net_assets, date   │
-│  indices[]     ← price, change_pct_24h    │
-│  macroEvents[] ← event, impact, actual    │
-└──────────────────┬─────────────────────────┘
-                   │
-                   ▼
-┌────────────────────────────────────────────┐
-│  POST /api/generate-report                 │
-│  Claude Sonnet 4.6                         │
-│                                            │
-│  Prompt: live data context block           │
-│  Output: GeneratedReport JSON              │
-│    ├─ title, subtitle                      │
-│    ├─ signal: BULLISH/BEARISH/NEUTRAL      │
-│    ├─ confidence: 0–100                    │
-│    ├─ executiveSummary                     │
-│    ├─ sections[] (heading + content)       │
-│    ├─ keyRisks[]                           │
-│    ├─ actionableInsight                    │
-│    ├─ tradeIdea (asset, direction,         │
-│    │             targetSymbol)             │
-│    └─ citations[]                          │
-└──────────────────┬─────────────────────────┘
-                   │
-                   ▼
-         ReportView component
-                   │
-                   ▼
-┌────────────────────────────────────────────┐
-│  TRADE GATE  (if tradeIdea present)        │
-│                                            │
-│  Show: direction, symbol, rationale        │
-│  Require: risk checkbox ✓                  │
-│  On confirm: open SoDEX at target pair     │
-└────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    A([User clicks Generate Daily Brief]) --> B
+
+    subgraph B["Parallel Data Fetch — Promise.all"]
+        B1[SoSoValue /news/hot\n→ 12 articles]
+        B2[SoSoValue /etfs/summary-history\n?symbol=BTC&country_code=US\n→ total_net_inflow, date]
+        B3[SoSoValue /indices\n→ string ticker list\n+ /market-snapshot ×4]
+        B4[SoSoValue /macro/events\n→ event, impact, actual]
+    end
+
+    B --> C
+
+    subgraph C["Build ReportInput"]
+        C1["type: daily_brief\nnews[] ← id, title, release_time, content\netfFlows ← total_net_inflow, total_net_assets\nindices[] ← price, change_pct_24h\nmacroEvents[] ← event, impact, actual"]
+    end
+
+    C --> D
+
+    subgraph D["POST /api/generate-report → Claude Sonnet 4.6"]
+        D1["Output: GeneratedReport\n├ signal: BULLISH / BEARISH / NEUTRAL\n├ confidence: 0–100\n├ executiveSummary\n├ sections[]\n├ keyRisks[]\n├ actionableInsight\n├ tradeIdea: asset, direction, targetSymbol\n└ citations[]"]
+    end
+
+    D --> E[ReportView component]
+    E --> F
+
+    subgraph F["Trade Gate"]
+        F1["Show: direction, symbol, rationale\nRequire: risk checkbox ✓\nOn confirm: open SoDEX at target pair"]
+    end
 ```
 
 ---
 
 ### Asset Deep Dive Flow
 
-```
-User selects asset (BTC / ETH / SOL / custom)
-         │
-         ▼
-┌────────────────────────────────────────────┐
-│  PARALLEL DATA FETCH                       │
-│                                            │
-│  SoSoValue /news                           │
-│    ?category={SYMBOL}   → filtered news   │
-│  SoSoValue /currencies/{id}               │
-│    /market-snapshot     → price, vol,     │
-│                           marketCap       │
-│  SoSoValue /currencies/{id}               │
-│    /klines?interval=1d  → OHLCV 30d      │
-│  SoSoValue /etfs/summary                  │
-│    ?symbol=BTC          → macro context  │
-└──────────────────┬─────────────────────────┘
-                   │
-                   ▼
-         type: "asset_deep_dive"
-         asset: "BTC" | "ETH" | ...
-                   │
-                   ▼
-         Claude Sonnet → GeneratedReport
-                   │
-                   ▼
-         ReportView + Trade Gate
+```mermaid
+flowchart TD
+    A([User selects asset\nBTC / ETH / SOL / custom ID]) --> B
+
+    subgraph B["Parallel Data Fetch — Promise.all"]
+        B1[/news?category=SYMBOL\n→ filtered news]
+        B2[/currencies/{id}/market-snapshot\n→ price, volume, marketCap, change24h]
+        B3[/currencies/{id}/klines?interval=1d\n→ OHLCV 30 days]
+        B4[/etfs/summary-history?symbol=BTC\n→ macro ETF context]
+    end
+
+    B --> C["Build ReportInput\ntype: asset_deep_dive\nasset: BTC | ETH | SOL | ..."]
+    C --> D[Claude Sonnet → GeneratedReport]
+    D --> E[ReportView + Trade Gate → SoDEX]
 ```
 
 ---
 
 ### Theme Report Flow
 
-```
-User selects theme  (AI Tokens / RWA / DeFi / L1 / etc.)
-         │
-         ▼
-┌────────────────────────────────────────────┐
-│  PARALLEL DATA FETCH                       │
-│                                            │
-│  SoSoValue /news/featured  → top stories  │
-│    └─ filtered by theme categories        │
-│  SoSoValue /etfs/summary   → flow context │
-│  SoSoValue /currencies     → sector data  │
-│    /sector-spotlight                       │
-│  SoSoValue /indices        → SSI perf.   │
-│    └─ /market-snapshot ×4                 │
-└──────────────────┬─────────────────────────┘
-                   │
-                   ▼
-         type: "theme_report"
-         theme: "AI Tokens" | "RWA" | ...
-                   │
-                   ▼
-         Claude Sonnet → GeneratedReport
-                   │
-                   ▼
-         ReportView + Trade Gate
+```mermaid
+flowchart TD
+    A([User selects theme\nAI Tokens / RWA / DeFi / L1 / custom]) --> B
+
+    subgraph B["Parallel Data Fetch — Promise.all"]
+        B1[/news/featured\n→ filtered by theme categories]
+        B2[/etfs/summary-history?symbol=BTC\n→ flow context]
+        B3[/currencies/sector-spotlight\n→ sector name + change_pct]
+        B4[/indices → ticker list\n+ /market-snapshot ×4]
+    end
+
+    B --> C["Build ReportInput\ntype: theme_report\ntheme: AI Tokens | RWA | DeFi | ..."]
+    C --> D[Claude Sonnet → GeneratedReport]
+    D --> E[ReportView + Trade Gate → SoDEX]
 ```
 
 ---
 
-### API Proxy Design (Security)
+### API Proxy Security Flow
 
-```
-Browser                Next.js Server              External API
-  │                         │                           │
-  │  GET /api/sosovalue     │                           │
-  │  ?path=/news/hot        │                           │
-  ├────────────────────────►│                           │
-  │                         │  GET openapi.sosovalue    │
-  │                         │  .com/openapi/v1/news/hot │
-  │                         │  x-soso-api-key: ****     │
-  │                         ├──────────────────────────►│
-  │                         │                           │
-  │                         │◄──────────────────────────┤
-  │                         │  { code:0, data:{...} }   │
-  │◄────────────────────────┤                           │
-  │  JSON response          │                           │
-  │  (key never exposed)    │                           │
+```mermaid
+sequenceDiagram
+    participant B as Browser
+    participant N as Next.js Server
+    participant S as SoSoValue API
+
+    B->>N: GET /api/sosovalue?path=/news/hot
+    Note over N: API key stored in env only
+    N->>S: GET openapi.sosovalue.com/openapi/v1/news/hot<br/>x-soso-api-key: ••••••••
+    S-->>N: { code: 0, data: { list: [...] } }
+    N-->>B: JSON response<br/>(key never reaches browser)
 ```
 
 ## SoSoValue API Endpoints Used
@@ -221,7 +161,7 @@ Browser                Next.js Server              External API
 ## Setup
 
 ```bash
-git clone https://github.com/fourWayz/soso-analyst
+git clone <repo>
 cd soso-analyst
 npm install
 
