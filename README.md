@@ -179,7 +179,7 @@ sequenceDiagram
 ## Setup
 
 ```bash
-git clone <repo>
+git clone https://github.com/fourWayz/soso-analyst
 cd soso-analyst
 npm install
 
