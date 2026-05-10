@@ -21,7 +21,7 @@ export default function DailyBriefPage() {
       setStep('Fetching news from SoSoValue...');
       const [newsRes, etfRes, indicesRes, macroRes] = await Promise.all([
         fetch('/api/sosovalue?path=/news/hot').then(r => r.json()),
-        fetch('/api/sosovalue?path=/etfs/summary-history').then(r => r.json()),
+        fetch('/api/sosovalue?path=/etfs/summary-history&symbol=BTC&country_code=US').then(r => r.json()),
         fetch('/api/sosovalue?path=/indices').then(r => r.json()),
         fetch(`/api/sosovalue?path=/macro/events&date=${new Date().toISOString().split('T')[0]}`).then(r => r.json()),
       ]);
@@ -35,37 +35,44 @@ export default function DailyBriefPage() {
         : Array.isArray(etfRes) ? etfRes : [];
       const latestEtf = etfArr[etfArr.length - 1];
 
-      const idxArr = Array.isArray(indicesRes?.data) ? indicesRes.data
-        : Array.isArray(indicesRes) ? indicesRes : [];
+      const idxTickers: string[] = Array.isArray(indicesRes?.data) ? indicesRes.data.slice(0, 4) : [];
+      const idxSnapshots = await Promise.all(
+        idxTickers.map((t: string) =>
+          fetch(`/api/sosovalue?path=/indices/${t}/market-snapshot`)
+            .then(r => r.json())
+            .then(d => ({ ticker: t, ...(d?.data ?? d) }))
+            .catch(() => null)
+        )
+      );
+      const idxArr = idxSnapshots.filter(Boolean);
 
       const macroArr = Array.isArray(macroRes?.data) ? macroRes.data
         : Array.isArray(macroRes) ? macroRes : [];
 
       setStep('Generating report with Claude AI...');
 
-      const etf7d: number[] = etfArr.slice(-7).map((e: { totalNetInflow?: number }) => e.totalNetInflow ?? 0);
+      const etf7d: number[] = etfArr.slice(-7).map((e: { total_net_inflow?: number }) => e.total_net_inflow ?? 0);
 
       const input = {
         type: 'daily_brief' as const,
-        news: newsArr.slice(0, 12).map((n: { title: string; summary?: string; source: string; publishTime: number; categories?: string[] }) => ({
+        news: newsArr.slice(0, 12).map((n: { title: string; content?: string; release_time?: string; categories?: string[] }) => ({
           title: n.title,
-          summary: n.summary ?? '',
-          source: n.source,
-          publishTime: n.publishTime,
+          summary: n.content ?? '',
+          source: 'SoSoValue',
+          publishTime: parseInt(n.release_time ?? '0'),
           categories: n.categories ?? [],
         })),
         etfFlows: latestEtf ? {
-          totalNetInflow: latestEtf.totalNetInflow ?? 0,
-          btcNetInflow: latestEtf.btcNetInflow,
-          ethNetInflow: latestEtf.ethNetInflow,
+          totalNetInflow: latestEtf.total_net_inflow ?? 0,
+          btcNetInflow: latestEtf.total_net_inflow,
           date: latestEtf.date ?? new Date().toISOString().split('T')[0],
           trend7d: etf7d,
         } : undefined,
-        indices: idxArr.slice(0, 4).map((idx: { ticker: string; name?: string; value?: number; change24h?: number }) => ({
+        indices: idxArr.slice(0, 4).map((idx: { ticker: string; price?: number; change_pct_24h?: number }) => ({
           ticker: idx.ticker,
-          name: idx.name ?? idx.ticker,
-          value: idx.value ?? 0,
-          change24h: idx.change24h ?? 0,
+          name: idx.ticker,
+          value: idx.price ?? 0,
+          change24h: (idx.change_pct_24h ?? 0) * 100,
         })),
         macroEvents: macroArr.slice(0, 5).map((e: { event: string; date: string; impact: string; actual?: string; forecast?: string }) => ({
           event: e.event,

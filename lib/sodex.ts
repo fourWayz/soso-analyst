@@ -67,13 +67,16 @@ export interface SpotSymbol {
 
 export interface SpotTicker {
   symbol: string;
-  price: string;
-  priceChange: string;
-  priceChangePercent: string;
-  high: string;
-  low: string;
+  lastPx: string;
+  openPx: string;
+  highPx: string;
+  lowPx: string;
   volume: string;
   quoteVolume: string;
+  change: string;
+  changePct: number;
+  askPx: string;
+  bidPx: string;
   openTime: number;
   closeTime: number;
 }

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const BASE_URL = 'https://api.sosovalue.com/open/v1';
+const BASE_URL = 'https://openapi.sosovalue.com/openapi/v1';
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
@@ -14,7 +14,7 @@ export async function GET(req: NextRequest) {
     const res = await fetch(url, {
       headers: {
         'Accept': 'application/json',
-        ...(process.env.SOSOVALUE_API_KEY ? { 'X-API-KEY': process.env.SOSOVALUE_API_KEY } : {}),
+        ...(process.env.SOSOVALUE_API_KEY ? { 'x-soso-api-key': process.env.SOSOVALUE_API_KEY } : {}),
       },
     });
 

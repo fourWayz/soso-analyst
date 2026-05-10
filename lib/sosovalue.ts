@@ -1,9 +1,9 @@
-const BASE_URL = 'https://api.sosovalue.com/open/v1';
+const BASE_URL = 'https://openapi.sosovalue.com/openapi/v1';
 
 const headers = () => ({
   'Accept': 'application/json',
   'Content-Type': 'application/json',
-  ...(process.env.SOSOVALUE_API_KEY ? { 'X-API-KEY': process.env.SOSOVALUE_API_KEY } : {}),
+  ...(process.env.SOSOVALUE_API_KEY ? { 'x-soso-api-key': process.env.SOSOVALUE_API_KEY } : {}),
 });
 
 async function get<T>(path: string, params?: Record<string, string | number>): Promise<T> {
@@ -87,16 +87,13 @@ export async function getFundraisingProjects() {
 
 // Types
 export interface NewsItem {
-  newsId: string;
+  id: string;
   title: string;
-  summary: string;
   content?: string;
-  publishTime: number;
-  source: string;
-  categories: string[];
+  release_time: string;
+  source_link?: string;
+  categories?: string[];
   currencies?: string[];
-  url?: string;
-  sentiment?: number;
 }
 
 export interface ETF {
@@ -108,10 +105,10 @@ export interface ETF {
 
 export interface ETFSummary {
   date: string;
-  totalNetAssets: number;
-  totalNetInflow: number;
-  btcNetInflow?: number;
-  ethNetInflow?: number;
+  total_net_assets: number;
+  total_net_inflow: number;
+  total_value_traded?: number;
+  cum_net_inflow?: number;
 }
 
 export interface ETFSnapshot {
@@ -170,10 +167,11 @@ export interface Index {
 }
 
 export interface IndexSnapshot {
-  ticker: string;
-  value: number;
-  change24h: number;
-  changePercent24h: number;
+  ticker?: string;
+  price: number;
+  change_pct_24h: number;
+  roi_7d?: number;
+  roi_1m?: number;
 }
 
 export interface IndexConstituent {

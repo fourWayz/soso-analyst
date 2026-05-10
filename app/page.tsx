@@ -6,16 +6,16 @@ import { TrendingUp, TrendingDown, Newspaper, BarChart2, Zap, ArrowRight, Globe,
 
 interface Ticker {
   symbol: string;
-  price: string;
-  priceChangePercent: string;
+  lastPx: string;
+  changePct: number;
 }
 
 interface NewsItem {
-  newsId: string;
+  id: string;
   title: string;
-  source: string;
-  publishTime: number;
-  categories: string[];
+  content?: string;
+  release_time: string;
+  categories?: string[];
 }
 
 export default function Home() {
@@ -37,7 +37,8 @@ export default function Home() {
     fetch('/api/sosovalue?path=/news/hot')
       .then(r => r.json())
       .then(d => {
-        const items: NewsItem[] = Array.isArray(d?.data) ? d.data : Array.isArray(d) ? d : [];
+        const items: NewsItem[] = Array.isArray(d?.data?.list) ? d.data.list
+          : Array.isArray(d?.data) ? d.data : Array.isArray(d) ? d : [];
         setNews(items.slice(0, 5));
       })
       .catch(() => setNews([]))
@@ -72,11 +73,11 @@ export default function Home() {
             <span className="text-white/30 text-xs">● SoDEX live prices · configure API to activate</span>
           ) : (
             tickers.map(t => {
-              const pct = parseFloat(t.priceChangePercent ?? '0');
+              const pct = t.changePct ?? 0;
               return (
                 <span key={t.symbol} className="flex items-center gap-1.5 text-xs">
                   <span className="text-white/50">{t.symbol.replace('_', '/')}</span>
-                  <span className="font-semibold">${parseFloat(t.price).toLocaleString(undefined, { maximumFractionDigits: 4 })}</span>
+                  <span className="font-semibold">${parseFloat(t.lastPx).toLocaleString(undefined, { maximumFractionDigits: 4 })}</span>
                   <span className={pct >= 0 ? 'text-emerald-400' : 'text-rose-400'}>
                     {pct >= 0 ? <TrendingUp size={10} className="inline" /> : <TrendingDown size={10} className="inline" />}
                     {' '}{pct >= 0 ? '+' : ''}{pct.toFixed(2)}%
@@ -157,14 +158,12 @@ export default function Home() {
           ) : (
             <div className="space-y-3">
               {news.map(item => (
-                <div key={item.newsId} className="flex items-start gap-3 py-2 border-b border-white/5 last:border-0">
+                <div key={item.id} className="flex items-start gap-3 py-2 border-b border-white/5 last:border-0">
                   <div className="flex-1 min-w-0">
                     <p className="text-sm text-white/80 leading-snug">{item.title}</p>
                     <div className="flex items-center gap-2 mt-1 flex-wrap">
-                      <span className="text-xs text-white/30">{item.source}</span>
-                      <span className="text-white/20">·</span>
                       <span className="text-xs text-white/30">
-                        {new Date(item.publishTime).toLocaleTimeString()}
+                        {new Date(parseInt(item.release_time)).toLocaleTimeString()}
                       </span>
                       {item.categories?.slice(0, 2).map(c => (
                         <span key={c} className="text-xs text-blue-400/70 border border-blue-400/20 rounded px-1">{c}</span>

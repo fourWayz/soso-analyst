@@ -34,7 +34,7 @@ export default function AssetDivePage() {
       const [newsRes, snapshotRes, etfRes, klineRes] = await Promise.all([
         fetch(`/api/sosovalue?path=/news&category=${assetSymbol}`).then(r => r.json()),
         fetch(`/api/sosovalue?path=/currencies/${assetId}/market-snapshot`).then(r => r.json()).catch(() => null),
-        fetch('/api/sosovalue?path=/etfs/summary-history').then(r => r.json()),
+        fetch('/api/sosovalue?path=/etfs/summary-history&symbol=BTC&country_code=US').then(r => r.json()),
         fetch(`/api/sosovalue?path=/currencies/${assetId}/klines&interval=1d&limit=30`).then(r => r.json()).catch(() => null),
       ]);
 
@@ -67,11 +67,10 @@ export default function AssetDivePage() {
           volume24h: snapshot.volume24h ?? 0,
         } : undefined,
         etfFlows: latestEtf ? {
-          totalNetInflow: latestEtf.totalNetInflow ?? 0,
-          btcNetInflow: latestEtf.btcNetInflow,
-          ethNetInflow: latestEtf.ethNetInflow,
+          totalNetInflow: latestEtf.total_net_inflow ?? 0,
+          btcNetInflow: latestEtf.total_net_inflow,
           date: latestEtf.date ?? new Date().toISOString().split('T')[0],
-          trend7d: etfArr.slice(-7).map((e: { totalNetInflow?: number }) => e.totalNetInflow ?? 0),
+          trend7d: etfArr.slice(-7).map((e: { total_net_inflow?: number }) => e.total_net_inflow ?? 0),
         } : undefined,
       };
 

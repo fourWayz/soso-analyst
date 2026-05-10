@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const SPOT_ENDPOINT = 'https://api.sodex.com/spot/v1';
+const SPOT_ENDPOINT = 'https://mainnet-gw.sodex.dev/api/v1/spot';
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);

@@ -35,7 +35,7 @@ export default function ThemeReportPage() {
       setStep('Fetching thematic news from SoSoValue...');
       const [newsRes, etfRes, sectorRes, indicesRes] = await Promise.all([
         fetch('/api/sosovalue?path=/news/featured').then(r => r.json()),
-        fetch('/api/sosovalue?path=/etfs/summary-history').then(r => r.json()),
+        fetch('/api/sosovalue?path=/etfs/summary-history&symbol=BTC&country_code=US').then(r => r.json()),
         fetch('/api/sosovalue?path=/currencies/sector-spotlight').then(r => r.json()).catch(() => null),
         fetch('/api/sosovalue?path=/indices').then(r => r.json()),
       ]);
@@ -69,23 +69,22 @@ export default function ThemeReportPage() {
           categories: n.categories ?? [],
         })),
         etfFlows: latestEtf ? {
-          totalNetInflow: latestEtf.totalNetInflow ?? 0,
-          btcNetInflow: latestEtf.btcNetInflow,
-          ethNetInflow: latestEtf.ethNetInflow,
+          totalNetInflow: latestEtf.total_net_inflow ?? 0,
+          btcNetInflow: latestEtf.total_net_inflow,
           date: latestEtf.date ?? new Date().toISOString().split('T')[0],
-          trend7d: etfArr.slice(-7).map((e: { totalNetInflow?: number }) => e.totalNetInflow ?? 0),
+          trend7d: etfArr.slice(-7).map((e: { total_net_inflow?: number }) => e.total_net_inflow ?? 0),
         } : undefined,
         sectorData: sectorData?.sectors ? {
-          sectors: sectorData.sectors.slice(0, 8).map((s: { name: string; change24h: number }) => ({
+          sectors: sectorData.sectors.slice(0, 8).map((s: { name: string; change24h?: number; change_pct_24h?: number }) => ({
             name: s.name,
-            change24h: s.change24h,
+            change24h: s.change24h ?? s.change_pct_24h ?? 0,
           })),
         } : undefined,
-        indices: idxArr.slice(0, 4).map((idx: { ticker: string; name?: string; value?: number; change24h?: number }) => ({
+        indices: idxArr.slice(0, 4).map((idx: { ticker: string; price?: number; change_pct_24h?: number }) => ({
           ticker: idx.ticker,
-          name: idx.name ?? idx.ticker,
-          value: idx.value ?? 0,
-          change24h: idx.change24h ?? 0,
+          name: idx.ticker,
+          value: idx.price ?? 0,
+          change24h: (idx.change_pct_24h ?? 0) * 100,
         })),
       };
 

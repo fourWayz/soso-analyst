@@ -6,36 +6,32 @@ import { BarChart2, TrendingUp, TrendingDown, ArrowRight, RefreshCw, AlertTriang
 
 interface Ticker {
   symbol: string;
-  price: string;
-  priceChangePercent: string;
-  high: string;
-  low: string;
+  lastPx: string;
+  highPx: string;
+  lowPx: string;
   volume: string;
-  quoteVolume: string;
+  changePct: number;
 }
 
 interface ETFSummary {
   date: string;
-  totalNetAssets: number;
-  totalNetInflow: number;
-  btcNetInflow?: number;
-  ethNetInflow?: number;
+  total_net_assets: number;
+  total_net_inflow: number;
+  cum_net_inflow?: number;
 }
 
 interface NewsItem {
-  newsId: string;
+  id: string;
   title: string;
-  summary?: string;
-  source: string;
-  publishTime: number;
-  categories: string[];
+  content?: string;
+  release_time: string;
+  categories?: string[];
 }
 
 interface IndexSnapshot {
   ticker: string;
-  value: number;
-  change24h?: number;
-  changePercent24h?: number;
+  price: number;
+  change_pct_24h: number;
 }
 
 function fmt(n: number, dec = 2) {
@@ -59,22 +55,31 @@ export default function Dashboard() {
     setLoading(true);
     Promise.all([
       fetch('/api/sodex?path=/markets/tickers').then(r => r.json()),
-      fetch('/api/sosovalue?path=/etfs/summary-history').then(r => r.json()),
-      fetch('/api/sosovalue?path=/news').then(r => r.json()),
+      fetch('/api/sosovalue?path=/etfs/summary-history&symbol=BTC&country_code=US').then(r => r.json()),
+      fetch('/api/sosovalue?path=/news/hot').then(r => r.json()),
       fetch('/api/sosovalue?path=/indices').then(r => r.json()),
-    ]).then(([tickerData, etfData, newsData, indicesData]) => {
-      const tickerArr: Ticker[] = Array.isArray(tickerData?.data) ? tickerData.data : Array.isArray(tickerData) ? tickerData : [];
+    ]).then(async ([tickerData, etfData, newsData, indicesData]) => {
+      const tickerArr: Ticker[] = Array.isArray(tickerData?.data) ? tickerData.data : [];
       setTickers(tickerArr.slice(0, 8));
 
-      const etfArr: ETFSummary[] = Array.isArray(etfData?.data) ? etfData.data : Array.isArray(etfData) ? etfData : [];
+      const etfArr: ETFSummary[] = Array.isArray(etfData?.data) ? etfData.data : [];
       if (etfArr.length > 0) setEtf(etfArr[etfArr.length - 1]);
 
-      const newsArr: NewsItem[] = Array.isArray(newsData?.data?.list) ? newsData.data.list :
-        Array.isArray(newsData?.data) ? newsData.data : Array.isArray(newsData) ? newsData : [];
+      const newsArr: NewsItem[] = Array.isArray(newsData?.data?.list) ? newsData.data.list
+        : Array.isArray(newsData?.data) ? newsData.data : [];
       setNews(newsArr.slice(0, 8));
 
-      const idxArr: IndexSnapshot[] = Array.isArray(indicesData?.data) ? indicesData.data : Array.isArray(indicesData) ? indicesData : [];
-      setIndices(idxArr.slice(0, 4));
+      // /indices returns string tickers; fetch snapshots for first 4
+      const idxTickers: string[] = Array.isArray(indicesData?.data) ? indicesData.data.slice(0, 4) : [];
+      const snapshots = await Promise.all(
+        idxTickers.map((t: string) =>
+          fetch(`/api/sosovalue?path=/indices/${t}/market-snapshot`)
+            .then(r => r.json())
+            .then(d => ({ ticker: t, ...(d?.data ?? d) } as IndexSnapshot))
+            .catch(() => null)
+        )
+      );
+      setIndices(snapshots.filter(Boolean) as IndexSnapshot[]);
 
       setLastUpdated(new Date());
     }).catch(console.error).finally(() => setLoading(false));
@@ -114,32 +119,26 @@ export default function Dashboard() {
           <div className="bg-gradient-to-r from-blue-900/30 to-violet-900/20 border border-blue-500/20 rounded-xl p-4">
             <div className="flex items-center justify-between flex-wrap gap-4">
               <div>
-                <div className="text-xs text-white/40 mb-1">ETF Flows · SoSoValue Terminal · {etf.date}</div>
+                <div className="text-xs text-white/40 mb-1">BTC ETF Flows · SoSoValue Terminal · {etf.date}</div>
                 <div className="text-2xl font-bold">
-                  {etf.totalNetInflow >= 0 ? (
-                    <span className="text-emerald-400">+{fmtM(etf.totalNetInflow)}</span>
+                  {etf.total_net_inflow >= 0 ? (
+                    <span className="text-emerald-400">+{fmtM(etf.total_net_inflow)}</span>
                   ) : (
-                    <span className="text-rose-400">{fmtM(etf.totalNetInflow)}</span>
+                    <span className="text-rose-400">{fmtM(etf.total_net_inflow)}</span>
                   )}
-                  <span className="text-white/40 text-sm font-normal ml-2">total net inflow</span>
+                  <span className="text-white/40 text-sm font-normal ml-2">net inflow</span>
                 </div>
               </div>
               <div className="flex gap-6">
                 <div>
-                  <div className="text-xs text-white/40">BTC ETF</div>
-                  <div className={`font-semibold ${(etf.btcNetInflow ?? 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                    {fmtM(etf.btcNetInflow ?? 0)}
-                  </div>
-                </div>
-                <div>
-                  <div className="text-xs text-white/40">ETH ETF</div>
-                  <div className={`font-semibold ${(etf.ethNetInflow ?? 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                    {fmtM(etf.ethNetInflow ?? 0)}
-                  </div>
-                </div>
-                <div>
                   <div className="text-xs text-white/40">Total Net Assets</div>
-                  <div className="font-semibold">{fmtM(etf.totalNetAssets)}</div>
+                  <div className="font-semibold">{fmtM(etf.total_net_assets)}</div>
+                </div>
+                <div>
+                  <div className="text-xs text-white/40">Cumulative Inflow</div>
+                  <div className={`font-semibold ${(etf.cum_net_inflow ?? 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                    {fmtM(etf.cum_net_inflow ?? 0)}
+                  </div>
                 </div>
               </div>
               <Link href="/report/daily"
@@ -155,10 +154,10 @@ export default function Dashboard() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             {indices.map(idx => (
               <div key={idx.ticker} className="bg-white/[0.03] border border-white/[0.08] rounded-lg p-4">
-                <div className="text-xs text-white/40 mb-1">{idx.ticker} · SSI Index</div>
-                <div className="font-bold text-xl">{fmt(idx.value)}</div>
-                <div className={`text-xs mt-1 ${(idx.change24h ?? 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                  {(idx.change24h ?? 0) >= 0 ? '+' : ''}{fmt(idx.change24h ?? 0)}% 24h
+                <div className="text-xs text-white/40 mb-1">{idx.ticker} · SSI</div>
+                <div className="font-bold text-xl">{fmt(idx.price ?? 0)}</div>
+                <div className={`text-xs mt-1 ${(idx.change_pct_24h ?? 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                  {(idx.change_pct_24h ?? 0) >= 0 ? '+' : ''}{((idx.change_pct_24h ?? 0) * 100).toFixed(2)}% 24h
                 </div>
               </div>
             ))}
@@ -191,16 +190,16 @@ export default function Dashboard() {
                   <span className="text-right">Volume</span>
                 </div>
                 {tickers.map(t => {
-                  const pct = parseFloat(t.priceChangePercent ?? '0');
+                  const pct = t.changePct ?? 0;
                   return (
                     <div key={t.symbol} className="grid grid-cols-5 text-sm py-1.5 hover:bg-white/3 rounded px-1 transition-colors">
                       <span className="text-white/70 font-medium">{t.symbol.replace('_', '/')}</span>
-                      <span className="text-right font-semibold">${fmt(parseFloat(t.price), 4)}</span>
+                      <span className="text-right font-semibold">${fmt(parseFloat(t.lastPx), 4)}</span>
                       <span className={`text-right ${pct >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
                         {pct >= 0 ? <TrendingUp size={10} className="inline mr-0.5" /> : <TrendingDown size={10} className="inline mr-0.5" />}
                         {pct >= 0 ? '+' : ''}{pct.toFixed(2)}%
                       </span>
-                      <span className="text-right text-white/50">${fmt(parseFloat(t.high), 4)}</span>
+                      <span className="text-right text-white/50">${fmt(parseFloat(t.highPx), 4)}</span>
                       <span className="text-right text-white/50">{fmt(parseFloat(t.volume), 0)}</span>
                     </div>
                   );
@@ -261,13 +260,13 @@ export default function Dashboard() {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               {news.map(item => (
-                <div key={item.newsId} className="p-3 bg-white/[0.02] border border-white/5 rounded-lg hover:border-white/10 transition-colors">
+                <div key={item.id} className="p-3 bg-white/[0.02] border border-white/5 rounded-lg hover:border-white/10 transition-colors">
                   <p className="text-sm text-white/80 leading-snug mb-1">{item.title}</p>
-                  {item.summary && <p className="text-xs text-white/40 leading-relaxed line-clamp-2">{item.summary}</p>}
+                  {item.content && <p className="text-xs text-white/40 leading-relaxed line-clamp-2">{item.content}</p>}
                   <div className="flex items-center gap-2 mt-2 flex-wrap">
-                    <span className="text-xs text-white/30">{item.source}</span>
-                    <span className="text-white/20">·</span>
-                    <span className="text-xs text-white/30">{new Date(item.publishTime).toLocaleTimeString()}</span>
+                    <span className="text-xs text-white/30">
+                      {new Date(parseInt(item.release_time)).toLocaleTimeString()}
+                    </span>
                     {item.categories?.slice(0, 2).map(c => (
                       <span key={c} className="text-xs text-blue-400/70 border border-blue-400/20 rounded px-1">{c}</span>
                     ))}
