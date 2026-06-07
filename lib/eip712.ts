@@ -14,6 +14,13 @@ export interface SoDEXOrderParams {
   quantity: string;
 }
 
+export interface SignedOrder extends SoDEXOrderParams {
+  trader: string;
+  nonce: string;
+  expiration: string;
+  signature: string;
+}
+
 // Matches BatchNewOrderItem from SoDEX REST API schema
 export interface BatchOrderItem {
   symbolID: number;
