@@ -9,7 +9,7 @@ import {
 import type { GeneratedReport, TradeIdea } from '@/lib/claude';
 import {
   isMetaMaskAvailable, connectWallet, getConnectedAccount,
-  signSoDEXOrder, formatAddress,
+  signAuthNonce, generateClOrdID, formatAddress,
 } from '@/lib/eip712';
 import ETFFlowChart from './ETFFlowChart';
 
@@ -292,16 +292,51 @@ function EIP712TradeGate({ idea, onDone, onCancel }: {
   };
 
   const handleSign = async () => {
-    if (!account || !price || !riskChecked) return;
+    if (!account || !price || !quantity || !riskChecked) return;
     setStatus('signing');
     setErrorMsg('');
     try {
-      const signed = await signSoDEXOrder(account, { symbol: idea.targetSymbol, side, price, quantity });
+      // 1. Resolve symbolID from /markets/symbols
+      const symRes = await fetch(`/api/sodex?path=/markets/symbols&symbol=${idea.targetSymbol}`);
+      const symJson = await symRes.json();
+      const symbols: { id: number; name: string }[] = Array.isArray(symJson?.data) ? symJson.data
+        : Array.isArray(symJson) ? symJson : [];
+      const sym = symbols.find(s => s.name === idea.targetSymbol);
+      if (!sym) throw new Error(`Symbol ${idea.targetSymbol} not found on SoDEX. Ensure it is a valid trading pair.`);
+
+      // 2. Resolve accountID from /accounts/{address}
+      const acctRes = await fetch(`/api/sodex?path=/accounts/${account}`);
+      const acctJson = await acctRes.json();
+      const accountID: number | undefined = acctJson?.data?.id ?? acctJson?.id;
+      if (!accountID) throw new Error('SoDEX account not found. Connect your wallet to SoDEX and fund it before placing orders.');
+
+      // 3. Sign nonce with EIP-712 for X-API-Sign header (master-wallet auth, no separate API key needed)
+      const nonce = Date.now();
+      const apiSign = await signAuthNonce(account, nonce);
+
+      // 4. Build BatchNewOrderRequest with correct enum values
+      const orderRequest = {
+        accountID,
+        orders: [{
+          symbolID: sym.id,
+          clOrdID: generateClOrdID(),
+          side: side === 'BUY' ? 1 : 2,
+          type: 1,           // LIMIT
+          timeInForce: 1,    // GTC
+          price,
+          quantity,
+        }],
+      };
+
       setStatus('submitting');
-      const res = await fetch(`/api/sodex?path=/accounts/${account}/orders`, {
+      const res = await fetch('/api/sodex?path=/trade/orders/batch', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(signed),
+        headers: {
+          'Content-Type': 'application/json',
+          'X-API-Sign': apiSign,
+          'X-API-Nonce': String(nonce),
+        },
+        body: JSON.stringify(orderRequest),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));

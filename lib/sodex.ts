@@ -1,4 +1,4 @@
-const SPOT_ENDPOINT = 'https://api.sodex.com/spot/v1';
+const SPOT_ENDPOINT = 'https://mainnet-gw.sodex.dev/api/v1/spot';
 
 async function get<T>(path: string, params?: Record<string, string | number>): Promise<T> {
   const url = new URL(`${SPOT_ENDPOINT}${path}`);

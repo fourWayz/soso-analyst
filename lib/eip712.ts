@@ -14,15 +14,30 @@ export interface SoDEXOrderParams {
   quantity: string;
 }
 
-export interface SignedOrder extends SoDEXOrderParams {
-  trader: string;
-  nonce: string;
-  expiration: string;
-  signature: string;
+// Matches BatchNewOrderItem from SoDEX REST API schema
+export interface BatchOrderItem {
+  symbolID: number;
+  clOrdID: string;        // ^[0-9a-zA-Z_-]{1,36}$
+  side: 1 | 2;            // 1=BUY 2=SELL
+  type: 1 | 2;            // 1=LIMIT 2=MARKET
+  timeInForce: 1 | 2 | 3 | 4; // 1=GTC 2=FOK 3=IOC 4=GTX
+  price?: string;
+  quantity?: string;
 }
 
-// SoDEX EIP-712 domain
-// chainId and verifyingContract should be confirmed from SoDEX's official documentation
+// Matches BatchNewOrderRequest from SoDEX REST API schema
+export interface BatchOrderRequest {
+  accountID: number;
+  orders: BatchOrderItem[];
+}
+
+// SoDEX EIP-712 domain (used for X-API-Sign nonce auth, no verifyingContract needed)
+const SODEX_AUTH_DOMAIN = {
+  name: 'SoDEX',
+  version: '1',
+};
+
+// Legacy order-level EIP-712 domain kept for reference
 const SODEX_DOMAIN = {
   name: 'SoDEX',
   version: '1',
@@ -107,6 +122,33 @@ export async function signSoDEXOrder(
     expiration,
     signature,
   };
+}
+
+// Signs the nonce with EIP-712 for the X-API-Sign auth header.
+// Omitting X-API-Key causes SoDEX to verify against the master wallet.
+export async function signAuthNonce(account: string, nonce: number): Promise<string> {
+  if (!window.ethereum) throw new Error('MetaMask not available');
+  const typedData = JSON.stringify({
+    domain: SODEX_AUTH_DOMAIN,
+    types: {
+      EIP712Domain: [
+        { name: 'name', type: 'string' },
+        { name: 'version', type: 'string' },
+      ],
+      Auth: [{ name: 'nonce', type: 'uint256' }],
+    },
+    primaryType: 'Auth',
+    message: { nonce },
+  });
+  return (await window.ethereum.request({
+    method: 'eth_signTypedData_v4',
+    params: [account, typedData],
+  })) as string;
+}
+
+// Generates a valid clOrdID matching ^[0-9a-zA-Z_-]{1,36}$
+export function generateClOrdID(): string {
+  return `soso-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
 export function formatAddress(addr: string): string {
