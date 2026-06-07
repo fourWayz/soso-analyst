@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { BarChart2, Loader2, RefreshCw, Globe } from 'lucide-react';
 import ReportView from '@/components/ReportView';
 import type { GeneratedReport, TradeIdea } from '@/lib/claude';
+import { saveSignal } from '@/lib/signals';
 
 const THEMES = [
   { id: 'AI Tokens', desc: 'AI-driven crypto projects: compute, agents, oracles', categories: ['AI', 'Infrastructure'] },
@@ -99,7 +100,16 @@ export default function ThemeReportPage() {
         throw new Error(err.error ?? `Failed with status ${res.status}`);
       }
 
-      setReport(await res.json());
+      const generated: GeneratedReport = await res.json();
+      setReport(generated);
+
+      saveSignal({
+        type: 'theme_report',
+        label: theme,
+        signal: generated.signal,
+        confidence: generated.confidence,
+        timestamp: new Date().toISOString(),
+      });
     } catch (e) {
       setError(String(e));
     } finally {
@@ -108,8 +118,9 @@ export default function ThemeReportPage() {
     }
   };
 
-  const handleTrade = (idea: TradeIdea) => {
-    window.open(`https://sodex.com/trade/${idea.targetSymbol}`, '_blank');
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const handleTrade = (_idea: TradeIdea) => {
+    // EIP-712 trade gate handles execution inside ReportView
   };
 
   return (

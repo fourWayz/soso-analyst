@@ -5,16 +5,34 @@ export const maxDuration = 60;
 
 export async function POST(req: NextRequest) {
   try {
-    const input: ReportInput = await req.json();
+    const body = await req.text();
+    if (!body) {
+      return NextResponse.json({ error: 'Empty request body' }, { status: 400 });
+    }
+
+    let input: ReportInput;
+    try {
+      input = JSON.parse(body);
+    } catch {
+      return NextResponse.json({ error: 'Invalid JSON in request body' }, { status: 400 });
+    }
 
     if (!process.env.ANTHROPIC_API_KEY) {
-      return NextResponse.json({ error: 'ANTHROPIC_API_KEY not configured' }, { status: 500 });
+      return NextResponse.json(
+        { error: 'ANTHROPIC_API_KEY not configured — add it to .env.local' },
+        { status: 500 }
+      );
+    }
+
+    if (!input.type || !input.news) {
+      return NextResponse.json({ error: 'Missing required fields: type, news' }, { status: 400 });
     }
 
     const report = await generateReport(input);
     return NextResponse.json(report);
   } catch (err) {
-    console.error('Report generation error:', err);
-    return NextResponse.json({ error: String(err) }, { status: 500 });
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[generate-report]', msg);
+    return NextResponse.json({ error: msg }, { status: 500 });
   }
 }

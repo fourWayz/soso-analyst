@@ -4,7 +4,9 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { BarChart2, Loader2, RefreshCw, Search } from 'lucide-react';
 import ReportView from '@/components/ReportView';
+import TokenEconomics from '@/components/TokenEconomics';
 import type { GeneratedReport, TradeIdea } from '@/lib/claude';
+import { saveSignal } from '@/lib/signals';
 
 const PRESET_ASSETS = [
   { id: 'bitcoin', symbol: 'BTC', sodexSymbol: 'vBTC_vUSDC' },
@@ -85,7 +87,19 @@ export default function AssetDivePage() {
         throw new Error(err.error ?? `Failed with status ${res.status}`);
       }
 
-      setReport(await res.json());
+      const generated: GeneratedReport = await res.json();
+      setReport(generated);
+
+      saveSignal({
+        type: 'asset_deep_dive',
+        label: assetSymbol,
+        signal: generated.signal,
+        confidence: generated.confidence,
+        priceAtGeneration: input.marketData?.price,
+        symbol: assetSymbol,
+        targetSymbol: generated.tradeIdea?.targetSymbol ?? (customId ? undefined : selectedAsset.sodexSymbol),
+        timestamp: new Date().toISOString(),
+      });
     } catch (e) {
       setError(String(e));
     } finally {
@@ -94,8 +108,9 @@ export default function AssetDivePage() {
     }
   };
 
-  const handleTrade = (idea: TradeIdea) => {
-    window.open(`https://sodex.com/trade/${idea.targetSymbol}`, '_blank');
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const handleTrade = (_idea: TradeIdea) => {
+    // EIP-712 trade gate handles execution inside ReportView
   };
 
   return (
@@ -158,7 +173,7 @@ export default function AssetDivePage() {
           <div className="mt-3">
             <p className="text-xs text-white/30 mb-1">Data sources for this report:</p>
             <div className="flex flex-wrap gap-1.5">
-              {['/currencies/{id}/market-snapshot', '/news?category={symbol}', '/currencies/{id}/klines', '/etfs/summary-history'].map(ep => (
+              {['/currencies/{id}/market-snapshot', '/news?category={symbol}', '/currencies/{id}/klines', '/etfs/summary-history', '/currencies/{id}/token-economics'].map(ep => (
                 <span key={ep} className="text-xs font-mono text-violet-400/70 border border-violet-400/20 rounded px-2 py-0.5">{ep}</span>
               ))}
             </div>
@@ -187,6 +202,7 @@ export default function AssetDivePage() {
                 <RefreshCw size={12} /> Regenerate
               </button>
             </div>
+            <TokenEconomics assetId={customId || selectedAsset.id} symbol={customId.toUpperCase() || selectedAsset.symbol} />
             <ReportView report={report} onTrade={handleTrade} />
           </div>
         )}

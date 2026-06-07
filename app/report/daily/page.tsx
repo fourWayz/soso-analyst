@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { BarChart2, Loader2, RefreshCw, Newspaper } from 'lucide-react';
 import ReportView from '@/components/ReportView';
 import type { GeneratedReport, TradeIdea } from '@/lib/claude';
+import { saveSignal } from '@/lib/signals';
 
 export default function DailyBriefPage() {
   const [report, setReport] = useState<GeneratedReport | null>(null);
@@ -94,8 +95,16 @@ export default function DailyBriefPage() {
         throw new Error(err.error ?? `Failed with status ${res.status}`);
       }
 
-      const data = await res.json();
+      const data: GeneratedReport = await res.json();
       setReport(data);
+
+      saveSignal({
+        type: 'daily_brief',
+        label: 'Daily Brief',
+        signal: data.signal,
+        confidence: data.confidence,
+        timestamp: new Date().toISOString(),
+      });
     } catch (e) {
       setError(String(e));
     } finally {
@@ -104,8 +113,9 @@ export default function DailyBriefPage() {
     }
   };
 
-  const handleTrade = (idea: TradeIdea) => {
-    window.open(`https://sodex.com/trade/${idea.targetSymbol}`, '_blank');
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const handleTrade = (_idea: TradeIdea) => {
+    // EIP-712 trade gate handles execution inside ReportView
   };
 
   return (

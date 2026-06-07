@@ -3,6 +3,9 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { BarChart2, TrendingUp, TrendingDown, ArrowRight, RefreshCw, AlertTriangle } from 'lucide-react';
+import SignalLedger from '@/components/SignalLedger';
+import SectorHeatmap from '@/components/SectorHeatmap';
+import MarketAlertWidget from '@/components/MarketAlertWidget';
 
 interface Ticker {
   symbol: string;
@@ -102,6 +105,7 @@ export default function Dashboard() {
           <span className="text-white/60 text-sm">Live Dashboard</span>
         </div>
         <div className="flex items-center gap-4">
+          <Link href="/feed" className="text-xs text-blue-400/70 hover:text-blue-400 transition-colors">Analyst Feed</Link>
           {lastUpdated && (
             <span className="text-xs text-white/30">Updated {lastUpdated.toLocaleTimeString()}</span>
           )}
@@ -215,8 +219,9 @@ export default function Dashboard() {
               <div className="space-y-3">
                 {[
                   { href: '/report/daily', label: 'Daily Market Brief', desc: 'Full market overview', color: 'blue' },
-                  { href: '/report/asset', label: 'Asset Deep Dive', desc: 'Single token analysis', color: 'violet' },
+                  { href: '/report/asset', label: 'Asset Deep Dive', desc: 'Token analytics + economics', color: 'violet' },
                   { href: '/report/theme', label: 'Theme Report', desc: 'Narrative & sector view', color: 'emerald' },
+                  { href: '/feed', label: 'Analyst Feed', desc: 'Published signals + 72h outcomes', color: 'blue' },
                 ].map(r => (
                   <Link key={r.label} href={r.href}
                     className="flex items-center justify-between p-3 bg-white/5 hover:bg-white/8 border border-white/[0.06] rounded-lg transition-all group">
@@ -234,7 +239,7 @@ export default function Dashboard() {
             <div className="bg-white/[0.03] border border-white/[0.08] rounded-xl p-4">
               <div className="text-xs text-white/40 mb-3">Powered by</div>
               <div className="space-y-2">
-                {['SoSoValue Terminal API', 'SoDEX Spot Markets', 'SSI Index Protocol', 'Claude AI (Sonnet)'].map(s => (
+                {['SoSoValue Terminal API', 'SoDEX Spot Markets + Order Book', 'SSI Index Protocol', 'Claude AI (Sonnet)', 'EIP-712 MetaMask Signing', 'Analyst Feed (72h scoring)'].map(s => (
                   <div key={s} className="flex items-center gap-2">
                     <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
                     <span className="text-xs text-white/60">{s}</span>
@@ -244,6 +249,15 @@ export default function Dashboard() {
             </div>
           </div>
         </div>
+
+        {/* Auto market alert */}
+        <MarketAlertWidget />
+
+        {/* Sector heatmap */}
+        <SectorHeatmap />
+
+        {/* Signal accuracy ledger */}
+        <SignalLedger />
 
         {/* News feed */}
         <div className="bg-white/[0.03] border border-white/[0.08] rounded-xl p-5">

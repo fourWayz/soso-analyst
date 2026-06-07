@@ -19,12 +19,17 @@ export async function GET(req: NextRequest) {
     });
 
     if (!res.ok) {
-      return NextResponse.json({ error: `SoSoValue API returned ${res.status}`, path }, { status: res.status });
+      const detail = await res.text().catch(() => '');
+      return NextResponse.json(
+        { error: `SoSoValue API returned ${res.status}`, path, detail: detail.slice(0, 200) },
+        { status: res.status }
+      );
     }
 
     const data = await res.json();
     return NextResponse.json(data);
   } catch (err) {
-    return NextResponse.json({ error: String(err), path }, { status: 500 });
+    const msg = err instanceof Error ? err.message : String(err);
+    return NextResponse.json({ error: msg, path }, { status: 500 });
   }
 }

@@ -1,8 +1,17 @@
 'use client';
 
-import { useState } from 'react';
-import { TrendingUp, TrendingDown, Minus, AlertTriangle, Zap, ChevronRight, Copy, Check, ExternalLink } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import {
+  TrendingUp, TrendingDown, Minus, AlertTriangle, Zap,
+  ChevronRight, Copy, Check, Wallet, Loader2, CheckCircle2, XCircle,
+  BookOpen,
+} from 'lucide-react';
 import type { GeneratedReport, TradeIdea } from '@/lib/claude';
+import {
+  isMetaMaskAvailable, connectWallet, getConnectedAccount,
+  signSoDEXOrder, formatAddress,
+} from '@/lib/eip712';
+import ETFFlowChart from './ETFFlowChart';
 
 interface Props {
   report: GeneratedReport;
@@ -23,19 +32,12 @@ export default function ReportView({ report, onTrade }: Props) {
 
   const copyReport = () => {
     const text = [
-      report.title,
-      report.subtitle,
-      '',
-      `Signal: ${report.signal} (${report.confidence}% confidence)`,
-      '',
-      report.executiveSummary,
-      '',
-      ...report.sections.map(s => `## ${s.heading}\n${s.content}`),
-      '',
-      `Key Risks: ${report.keyRisks.join('; ')}`,
-      '',
-      `Actionable Insight: ${report.actionableInsight}`,
-      '',
+      report.title, report.subtitle, '',
+      `Signal: ${report.signal} (${report.confidence}% confidence)`, '',
+      report.executiveSummary, '',
+      ...report.sections.map(s => `## ${s.heading}\n${s.content}`), '',
+      `Key Risks: ${report.keyRisks.join('; ')}`, '',
+      `Actionable Insight: ${report.actionableInsight}`, '',
       `Published: ${report.publishedAt}`,
       `Source: SoSoValue Terminal + Claude AI`,
     ].join('\n');
@@ -46,7 +48,7 @@ export default function ReportView({ report, onTrade }: Props) {
 
   return (
     <div className="bg-[#0d1224] border border-white/10 rounded-xl overflow-hidden">
-      {/* Report header */}
+      {/* Header */}
       <div className="px-6 py-5 border-b border-white/10">
         <div className="flex items-start justify-between gap-4">
           <div className="flex-1">
@@ -55,13 +57,9 @@ export default function ReportView({ report, onTrade }: Props) {
                 <SignalIcon size={12} />
                 {report.signal}
               </span>
-              <span className="text-xs text-white/40">
-                {report.confidence}% confidence
-              </span>
+              <span className="text-xs text-white/40">{report.confidence}% confidence</span>
               <span className="text-xs text-white/30">·</span>
-              <span className="text-xs text-white/30">
-                {new Date(report.publishedAt).toLocaleString()}
-              </span>
+              <span className="text-xs text-white/30">{new Date(report.publishedAt).toLocaleString()}</span>
             </div>
             <h1 className="text-xl font-bold text-white mb-1">{report.title}</h1>
             <p className="text-sm text-white/50">{report.subtitle}</p>
@@ -104,6 +102,9 @@ export default function ReportView({ report, onTrade }: Props) {
             <p className="text-sm text-white/60 leading-relaxed pl-5">{section.content}</p>
           </div>
         ))}
+
+        {/* ETF Flow Chart — always shown, self-fetches */}
+        <ETFFlowChart />
       </div>
 
       {/* Key Risks */}
@@ -134,7 +135,9 @@ export default function ReportView({ report, onTrade }: Props) {
             <div>
               <div className="text-xs text-white/40 mb-1">Trade Idea · SoDEX</div>
               <div className="flex items-center gap-3">
-                <span className={`text-sm font-bold px-2 py-0.5 rounded ${report.tradeIdea.direction === 'LONG' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'}`}>
+                <span className={`text-sm font-bold px-2 py-0.5 rounded ${
+                  report.tradeIdea.direction === 'LONG' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'
+                }`}>
                   {report.tradeIdea.direction}
                 </span>
                 <span className="font-semibold">{report.tradeIdea.asset}</span>
@@ -142,26 +145,19 @@ export default function ReportView({ report, onTrade }: Props) {
               </div>
               <p className="text-xs text-white/40 mt-1">{report.tradeIdea.entryRationale}</p>
             </div>
-            <div className="flex gap-3">
-              <button
-                onClick={() => setShowTradeGate(true)}
-                className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded-lg text-sm font-semibold transition-colors">
-                <Zap size={14} /> Trade on SoDEX
-              </button>
-              <a href="https://sodex.com" target="_blank" rel="noopener noreferrer"
-                className="flex items-center gap-1.5 border border-white/20 hover:border-white/40 px-3 py-2 rounded-lg text-sm transition-colors">
-                <ExternalLink size={14} /> SoDEX
-              </a>
-            </div>
+            <button
+              onClick={() => setShowTradeGate(v => !v)}
+              className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded-lg text-sm font-semibold transition-colors">
+              <Zap size={14} /> Trade on SoDEX
+            </button>
           </div>
 
-          {/* Trade confirmation gate */}
           {showTradeGate && (
-            <TradeConfirmGate
+            <EIP712TradeGate
               idea={report.tradeIdea}
-              onConfirm={() => {
-                if (onTrade && report.tradeIdea) onTrade(report.tradeIdea);
+              onDone={() => {
                 setShowTradeGate(false);
+                if (onTrade && report.tradeIdea) onTrade(report.tradeIdea);
               }}
               onCancel={() => setShowTradeGate(false)}
             />
@@ -184,45 +180,257 @@ export default function ReportView({ report, onTrade }: Props) {
   );
 }
 
-function TradeConfirmGate({ idea, onConfirm, onCancel }: {
-  idea: TradeIdea;
-  onConfirm: () => void;
-  onCancel: () => void;
-}) {
-  const [confirmed, setConfirmed] = useState(false);
+// ─── Order Book Slippage Preview ──────────────────────────────────────────────
+
+interface OrderBookData {
+  bestAsk: number;
+  bestBid: number;
+  spread: number;
+}
+
+function useOrderBook(symbol: string | undefined) {
+  const [ob, setOb] = useState<OrderBookData | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const fetch_ = useCallback(async () => {
+    if (!symbol) return;
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/sodex?path=/markets/${symbol}/orderbook&limit=5`);
+      const json = await res.json();
+      const bids: [string, string][] = json?.data?.bids ?? json?.bids ?? [];
+      const asks: [string, string][] = json?.data?.asks ?? json?.asks ?? [];
+      if (bids.length && asks.length) {
+        setOb({
+          bestBid: parseFloat(bids[0][0]),
+          bestAsk: parseFloat(asks[0][0]),
+          spread: parseFloat(asks[0][0]) - parseFloat(bids[0][0]),
+        });
+      }
+    } catch {
+      // silently ignore
+    } finally {
+      setLoading(false);
+    }
+  }, [symbol]);
+
+  useEffect(() => { fetch_(); }, [fetch_]);
+
+  return { ob, loading, refresh: fetch_ };
+}
+
+function SlippagePreview({ symbol, price, side }: { symbol: string; price: string; side: 'BUY' | 'SELL' }) {
+  const { ob, loading } = useOrderBook(symbol);
+  if (loading) return <div className="text-xs text-white/30 animate-pulse">Fetching order book...</div>;
+  if (!ob) return null;
+
+  const enteredPrice = parseFloat(price);
+  const referencePrice = side === 'BUY' ? ob.bestAsk : ob.bestBid;
+  const slippage = enteredPrice && referencePrice
+    ? ((Math.abs(enteredPrice - referencePrice) / referencePrice) * 100)
+    : null;
 
   return (
-    <div className="mt-4 p-4 border border-amber-500/30 bg-amber-500/5 rounded-lg">
-      <div className="flex items-start gap-3 mb-4">
+    <div className="bg-white/5 rounded-lg p-3 text-xs space-y-1.5">
+      <div className="flex items-center gap-1.5 text-white/40 mb-2">
+        <BookOpen size={11} /> Order Book Preview
+      </div>
+      <div className="flex justify-between">
+        <span className="text-white/40">Best Ask</span>
+        <span className="text-rose-400">${ob.bestAsk.toLocaleString(undefined, { maximumFractionDigits: 4 })}</span>
+      </div>
+      <div className="flex justify-between">
+        <span className="text-white/40">Best Bid</span>
+        <span className="text-emerald-400">${ob.bestBid.toLocaleString(undefined, { maximumFractionDigits: 4 })}</span>
+      </div>
+      <div className="flex justify-between">
+        <span className="text-white/40">Spread</span>
+        <span>${ob.spread.toLocaleString(undefined, { maximumFractionDigits: 4 })}</span>
+      </div>
+      {slippage !== null && enteredPrice > 0 && (
+        <div className="flex justify-between border-t border-white/10 pt-1.5">
+          <span className="text-white/40">Est. slippage</span>
+          <span className={slippage > 1 ? 'text-amber-400 font-semibold' : 'text-white/60'}>
+            {slippage.toFixed(3)}%{slippage > 1 ? ' ⚠' : ''}
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── EIP-712 Trade Gate ────────────────────────────────────────────────────────
+
+type TradeStatus = 'idle' | 'connecting' | 'signing' | 'submitting' | 'success' | 'error';
+
+function EIP712TradeGate({ idea, onDone, onCancel }: {
+  idea: TradeIdea;
+  onDone: () => void;
+  onCancel: () => void;
+}) {
+  const [account, setAccount] = useState<string | null>(null);
+  const [status, setStatus] = useState<TradeStatus>('idle');
+  const [errorMsg, setErrorMsg] = useState('');
+  const [riskChecked, setRiskChecked] = useState(false);
+  const [price, setPrice] = useState('');
+  const [quantity, setQuantity] = useState('0.001');
+  const hasMM = isMetaMaskAvailable();
+  const side: 'BUY' | 'SELL' = idea.direction === 'LONG' ? 'BUY' : 'SELL';
+
+  useEffect(() => { getConnectedAccount().then(setAccount); }, []);
+
+  const handleConnect = async () => {
+    setStatus('connecting');
+    setErrorMsg('');
+    try {
+      setAccount(await connectWallet());
+      setStatus('idle');
+    } catch (e) {
+      setErrorMsg(String(e));
+      setStatus('error');
+    }
+  };
+
+  const handleSign = async () => {
+    if (!account || !price || !riskChecked) return;
+    setStatus('signing');
+    setErrorMsg('');
+    try {
+      const signed = await signSoDEXOrder(account, { symbol: idea.targetSymbol, side, price, quantity });
+      setStatus('submitting');
+      const res = await fetch(`/api/sodex?path=/accounts/${account}/orders`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(signed),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error ?? `Order failed: ${res.status}`);
+      }
+      setStatus('success');
+      setTimeout(onDone, 2000);
+    } catch (e) {
+      setErrorMsg(String(e));
+      setStatus('error');
+    }
+  };
+
+  if (status === 'success') {
+    return (
+      <div className="mt-4 p-4 border border-emerald-500/30 bg-emerald-500/5 rounded-lg flex items-center gap-3">
+        <CheckCircle2 size={20} className="text-emerald-400 flex-shrink-0" />
+        <div>
+          <p className="text-sm font-semibold text-emerald-400">Order submitted to SoDEX</p>
+          <p className="text-xs text-white/40 mt-0.5">EIP-712 signed order accepted by the matching engine</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-4 p-4 border border-amber-500/30 bg-amber-500/5 rounded-lg space-y-4">
+      <div className="flex items-start gap-3">
         <AlertTriangle size={16} className="text-amber-400 flex-shrink-0 mt-0.5" />
         <div>
-          <p className="text-sm font-semibold text-amber-400 mb-1">Trade Confirmation Required</p>
-          <p className="text-xs text-white/50">
-            You are about to place a <strong className="text-white">{idea.direction}</strong> order on <strong className="text-white">{idea.targetSymbol}</strong> via SoDEX.
-            This action will interact with the SoDEX order book. Review the trade idea and confirm you understand the risks.
+          <p className="text-sm font-semibold text-amber-400">EIP-712 Order Signing — SoDEX</p>
+          <p className="text-xs text-white/50 mt-0.5">
+            Your order is signed with MetaMask typed data and submitted directly to the SoDEX matching engine.
           </p>
         </div>
       </div>
-      <div className="flex items-center gap-3 mb-4">
-        <input
-          type="checkbox"
-          id="risk-confirm"
-          checked={confirmed}
-          onChange={e => setConfirmed(e.target.checked)}
-          className="rounded"
-        />
-        <label htmlFor="risk-confirm" className="text-xs text-white/60 cursor-pointer">
-          I understand this is a research-based trade idea and I accept full responsibility for my trading decisions.
-        </label>
+
+      {/* Order summary */}
+      <div className="bg-white/5 rounded-lg p-3 text-xs space-y-1.5">
+        <div className="flex justify-between">
+          <span className="text-white/40">Symbol</span><span className="font-mono">{idea.targetSymbol}</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-white/40">Side</span>
+          <span className={`font-semibold ${side === 'BUY' ? 'text-emerald-400' : 'text-rose-400'}`}>{side} · LIMIT</span>
+        </div>
       </div>
+
+      {/* Price / qty inputs */}
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="text-xs text-white/40 mb-1 block">Price (USDC)</label>
+          <input
+            type="number"
+            placeholder="e.g. 65000"
+            value={price}
+            onChange={e => setPrice(e.target.value)}
+            className="w-full bg-white/5 border border-white/10 rounded px-3 py-2 text-sm text-white placeholder-white/20 focus:outline-none focus:border-blue-500/50"
+          />
+        </div>
+        <div>
+          <label className="text-xs text-white/40 mb-1 block">Quantity ({idea.asset})</label>
+          <input
+            type="number"
+            placeholder="e.g. 0.001"
+            value={quantity}
+            onChange={e => setQuantity(e.target.value)}
+            className="w-full bg-white/5 border border-white/10 rounded px-3 py-2 text-sm text-white placeholder-white/20 focus:outline-none focus:border-blue-500/50"
+          />
+        </div>
+      </div>
+
+      {/* Order book slippage */}
+      {idea.targetSymbol && (
+        <SlippagePreview symbol={idea.targetSymbol} price={price} side={side} />
+      )}
+
+      {/* Wallet */}
+      {!hasMM ? (
+        <div className="text-xs text-white/40 border border-white/10 rounded p-3">
+          MetaMask not detected.{' '}
+          <a href="https://metamask.io" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">
+            Install MetaMask
+          </a>{' '}
+          to sign orders on-chain.
+        </div>
+      ) : account ? (
+        <div className="flex items-center gap-2 text-xs text-emerald-400">
+          <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+          Connected: {formatAddress(account)}
+        </div>
+      ) : (
+        <button onClick={handleConnect} disabled={status === 'connecting'}
+          className="w-full flex items-center justify-center gap-2 border border-white/20 hover:border-white/40 py-2 rounded-lg text-sm transition-colors disabled:opacity-50">
+          {status === 'connecting' ? <Loader2 size={14} className="animate-spin" /> : <Wallet size={14} />}
+          Connect MetaMask
+        </button>
+      )}
+
+      {/* Risk checkbox */}
+      <label className="flex items-start gap-2 cursor-pointer">
+        <input type="checkbox" checked={riskChecked} onChange={e => setRiskChecked(e.target.checked)} className="mt-0.5 rounded" />
+        <span className="text-xs text-white/50">
+          I understand this is a research-based trade idea and accept full responsibility for my trading decisions.
+        </span>
+      </label>
+
+      {status === 'error' && (
+        <div className="flex items-start gap-2 text-xs text-rose-400 bg-rose-500/5 border border-rose-500/20 rounded p-2">
+          <XCircle size={14} className="flex-shrink-0 mt-0.5" />
+          <span>{errorMsg}</span>
+        </div>
+      )}
+
       <div className="flex gap-3">
-        <button onClick={onCancel}
-          className="px-4 py-2 text-sm border border-white/20 hover:border-white/40 rounded-lg transition-colors">
+        <button onClick={onCancel} className="px-4 py-2 text-sm border border-white/20 hover:border-white/40 rounded-lg transition-colors">
           Cancel
         </button>
-        <button onClick={onConfirm} disabled={!confirmed}
-          className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-500 rounded-lg font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
-          Confirm — Open SoDEX
+        <button
+          onClick={handleSign}
+          disabled={!account || !price || !quantity || !riskChecked || status === 'signing' || status === 'submitting'}
+          className="flex-1 flex items-center justify-center gap-2 px-4 py-2 text-sm bg-blue-600 hover:bg-blue-500 rounded-lg font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+          {status === 'signing' ? (
+            <><Loader2 size={14} className="animate-spin" /> Waiting for MetaMask...</>
+          ) : status === 'submitting' ? (
+            <><Loader2 size={14} className="animate-spin" /> Submitting to SoDEX...</>
+          ) : (
+            <><Zap size={14} /> Sign &amp; Submit Order</>
+          )}
         </button>
       </div>
     </div>

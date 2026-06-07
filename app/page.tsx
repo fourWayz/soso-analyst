@@ -54,13 +54,14 @@ export default function Home() {
             <BarChart2 size={14} />
           </div>
           <span className="font-bold text-lg tracking-tight">SoSo Analyst</span>
-          <span className="text-xs text-blue-400 border border-blue-400/30 rounded px-1.5 py-0.5 ml-1">WAVE 1</span>
+          <span className="text-xs text-emerald-400 border border-emerald-400/30 rounded px-1.5 py-0.5 ml-1">WAVE 2</span>
         </div>
         <div className="flex items-center gap-6 text-sm text-white/60">
           <Link href="/dashboard" className="hover:text-white transition-colors">Dashboard</Link>
           <Link href="/report/daily" className="hover:text-white transition-colors">Daily Brief</Link>
           <Link href="/report/asset" className="hover:text-white transition-colors">Asset Dive</Link>
-          <Link href="/report/theme" className="hover:text-white transition-colors">Theme Report</Link>
+          <Link href="/report/theme" className="hover:text-white transition-colors">Theme</Link>
+          <Link href="/feed" className="hover:text-white transition-colors text-blue-400/80">Analyst Feed</Link>
         </div>
       </nav>
 
@@ -186,7 +187,7 @@ export default function Home() {
               { step: '01', label: 'Ingest', desc: 'SoSoValue pulls live news, ETF flows, market data & SSI indices', icon: Globe },
               { step: '02', label: 'Analyse', desc: 'Claude AI synthesises data into structured research with citations', icon: Cpu },
               { step: '03', label: 'Signal', desc: 'BULLISH / BEARISH / NEUTRAL with confidence score & key risks', icon: Shield },
-              { step: '04', label: 'Execute', desc: 'One-click trade on SoDEX with confirmation gate & order preview', icon: Zap },
+              { step: '04', label: 'Execute', desc: 'EIP-712 signed order via MetaMask — submitted directly to SoDEX matching engine', icon: Zap },
             ].map(s => (
               <div key={s.step} className="text-center">
                 <div className="w-12 h-12 rounded-full border border-white/10 flex items-center justify-center mx-auto mb-3">
@@ -204,7 +205,7 @@ export default function Home() {
       {/* Footer */}
       <footer className="border-t border-white/5 px-6 py-8 text-center text-xs text-white/20">
         <p>SoSo Analyst · Built for SoSoValue Buildathon Wave 1 · Powered by SoSoValue Terminal, SoDEX &amp; Claude AI</p>
-        <p className="mt-1">Data sourced from SoSoValue API · Not financial advice</p>
+        <p className="mt-1">Data sourced from SoSoValue API · Not financial advice · Wave 2</p>
       </footer>
     </main>
   );
