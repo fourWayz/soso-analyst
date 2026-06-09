@@ -40,9 +40,11 @@ export default function MarketAlertWidget() {
   const [alert, setAlert] = useState<MarketAlert | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [noKey, setNoKey] = useState(false);
 
   const generate = async (force = false) => {
     setError('');
+    setNoKey(false);
     if (!force) {
       const cached = loadCached();
       if (cached) { setAlert(cached); setLoading(false); return; }
@@ -50,10 +52,15 @@ export default function MarketAlertWidget() {
     setLoading(true);
     try {
       const res = await fetch('/api/alert');
-      if (!res.ok) throw new Error(`Alert failed: ${res.status}`);
-      const data: MarketAlert = await res.json();
-      setAlert(data);
-      saveCache(data);
+      const data = await res.json();
+      if (res.status === 503 || (data?.error ?? '').includes('ANTHROPIC_API_KEY')) {
+        setNoKey(true);
+        setLoading(false);
+        return;
+      }
+      if (!res.ok) throw new Error(data?.error ?? `Alert failed: ${res.status}`);
+      setAlert(data as MarketAlert);
+      saveCache(data as MarketAlert);
     } catch (e) {
       setError(String(e));
     } finally {
@@ -101,6 +108,12 @@ export default function MarketAlertWidget() {
             <p className="text-sm text-white/60">Fetching live data → generating alert...</p>
             <p className="text-xs text-white/30 mt-0.5">SoSoValue news + ETF flows + SoDEX prices → Claude AI</p>
           </div>
+        </div>
+      ) : noKey ? (
+        <div className="py-3 text-xs text-white/30">
+          Auto Market Alert requires a Claude API key.{' '}
+          Add <span className="font-mono text-white/50">ANTHROPIC_API_KEY=sk-ant-...</span> to{' '}
+          <span className="font-mono text-white/50">.env.local</span> and restart the server.
         </div>
       ) : error ? (
         <div className="text-xs text-rose-400 py-2">{error}</div>

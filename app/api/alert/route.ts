@@ -3,12 +3,13 @@ import Anthropic from '@anthropic-ai/sdk';
 
 export const maxDuration = 30;
 
-const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-
 export async function GET() {
-  if (!process.env.ANTHROPIC_API_KEY) {
-    return NextResponse.json({ error: 'ANTHROPIC_API_KEY not configured' }, { status: 500 });
+  const key = process.env.ANTHROPIC_API_KEY ?? '';
+  if (!key || !key.startsWith('sk-ant-')) {
+    return NextResponse.json({ error: 'ANTHROPIC_API_KEY not configured' }, { status: 503 });
   }
+
+  const client = new Anthropic({ apiKey: key });
 
   try {
     // Fetch live context in parallel

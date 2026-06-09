@@ -27,7 +27,8 @@ interface NewsItem {
   id: string;
   title: string;
   content?: string;
-  release_time: string;
+  release_time?: string;
+  publishTime?: number;
   categories?: string[];
 }
 
@@ -50,17 +51,19 @@ export default function Dashboard() {
   const [tickers, setTickers] = useState<Ticker[]>([]);
   const [etf, setEtf] = useState<ETFSummary | null>(null);
   const [news, setNews] = useState<NewsItem[]>([]);
+  const [newsError, setNewsError] = useState('');
   const [indices, setIndices] = useState<IndexSnapshot[]>([]);
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   const load = () => {
     setLoading(true);
+    setNewsError('');
     Promise.all([
-      fetch('/api/sodex?path=/markets/tickers').then(r => r.json()),
-      fetch('/api/sosovalue?path=/etfs/summary-history&symbol=BTC&country_code=US').then(r => r.json()),
-      fetch('/api/sosovalue?path=/news/hot').then(r => r.json()),
-      fetch('/api/sosovalue?path=/indices').then(r => r.json()),
+      fetch('/api/sodex?path=/markets/tickers').then(r => r.json()).catch(() => ({})),
+      fetch('/api/sosovalue?path=/etfs/summary-history&symbol=BTC&country_code=US').then(r => r.json()).catch(() => ({})),
+      fetch('/api/sosovalue?path=/news/hot').then(r => r.json()).catch(() => ({})),
+      fetch('/api/sosovalue?path=/indices').then(r => r.json()).catch(() => ({})),
     ]).then(async ([tickerData, etfData, newsData, indicesData]) => {
       const tickerArr: Ticker[] = Array.isArray(tickerData?.data) ? tickerData.data : [];
       setTickers(tickerArr.slice(0, 8));
@@ -68,8 +71,13 @@ export default function Dashboard() {
       const etfArr: ETFSummary[] = Array.isArray(etfData?.data) ? etfData.data : [];
       if (etfArr.length > 0) setEtf(etfArr[etfArr.length - 1]);
 
+      // Handle multiple possible response shapes from SoSoValue
       const newsArr: NewsItem[] = Array.isArray(newsData?.data?.list) ? newsData.data.list
-        : Array.isArray(newsData?.data) ? newsData.data : [];
+        : Array.isArray(newsData?.data?.items) ? newsData.data.items
+        : Array.isArray(newsData?.data) ? newsData.data
+        : Array.isArray(newsData?.list) ? newsData.list
+        : [];
+      if (newsArr.length === 0 && newsData?.error) setNewsError(newsData.error);
       setNews(newsArr.slice(0, 8));
 
       // /indices returns string tickers; fetch snapshots for first 4
@@ -270,23 +278,28 @@ export default function Dashboard() {
               {[...Array(4)].map((_, i) => <div key={i} className="h-12 bg-white/5 rounded animate-pulse" />)}
             </div>
           ) : news.length === 0 ? (
-            <p className="text-white/30 text-sm">Configure SOSOVALUE_API_KEY to see live news</p>
+            <p className="text-white/30 text-sm">
+              {newsError ? `News unavailable: ${newsError}` : 'No news data returned — endpoint may be rate-limited or temporarily unavailable'}
+            </p>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {news.map(item => (
-                <div key={item.id} className="p-3 bg-white/[0.02] border border-white/5 rounded-lg hover:border-white/10 transition-colors">
-                  <p className="text-sm text-white/80 leading-snug mb-1">{item.title}</p>
-                  {item.content && <p className="text-xs text-white/40 leading-relaxed line-clamp-2">{item.content}</p>}
-                  <div className="flex items-center gap-2 mt-2 flex-wrap">
-                    <span className="text-xs text-white/30">
-                      {new Date(parseInt(item.release_time)).toLocaleTimeString()}
-                    </span>
-                    {item.categories?.slice(0, 2).map(c => (
-                      <span key={c} className="text-xs text-blue-400/70 border border-blue-400/20 rounded px-1">{c}</span>
-                    ))}
+              {news.map(item => {
+                const ts = item.publishTime ?? (item.release_time ? parseInt(item.release_time) : 0);
+                return (
+                  <div key={item.id} className="p-3 bg-white/[0.02] border border-white/5 rounded-lg hover:border-white/10 transition-colors">
+                    <p className="text-sm text-white/80 leading-snug mb-1">{item.title}</p>
+                    {item.content && <p className="text-xs text-white/40 leading-relaxed line-clamp-2">{item.content}</p>}
+                    <div className="flex items-center gap-2 mt-2 flex-wrap">
+                      {ts > 0 && (
+                        <span className="text-xs text-white/30">{new Date(ts).toLocaleTimeString()}</span>
+                      )}
+                      {item.categories?.slice(0, 2).map(c => (
+                        <span key={c} className="text-xs text-blue-400/70 border border-blue-400/20 rounded px-1">{c}</span>
+                      ))}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

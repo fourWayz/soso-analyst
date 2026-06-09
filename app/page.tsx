@@ -155,7 +155,7 @@ export default function Home() {
               ))}
             </div>
           ) : news.length === 0 ? (
-            <p className="text-white/30 text-sm">Configure SOSOVALUE_API_KEY to see live news</p>
+            <p className="text-white/30 text-sm">News unavailable — endpoint may be temporarily rate-limited</p>
           ) : (
             <div className="space-y-3">
               {news.map(item => (

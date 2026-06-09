@@ -17,10 +17,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid JSON in request body' }, { status: 400 });
     }
 
-    if (!process.env.ANTHROPIC_API_KEY) {
+    const anthropicKey = process.env.ANTHROPIC_API_KEY ?? '';
+    if (!anthropicKey || !anthropicKey.startsWith('sk-ant-')) {
       return NextResponse.json(
-        { error: 'ANTHROPIC_API_KEY not configured — add it to .env.local' },
-        { status: 500 }
+        { error: 'ANTHROPIC_API_KEY not configured — add a valid key (starts with sk-ant-) to .env.local' },
+        { status: 503 }
       );
     }
 
