@@ -5,7 +5,6 @@ import Link from 'next/link';
 import { BarChart2, Loader2, RefreshCw, Newspaper } from 'lucide-react';
 import ReportView from '@/components/ReportView';
 import type { GeneratedReport, TradeIdea } from '@/lib/claude';
-import { saveSignal } from '@/lib/signals';
 
 export default function DailyBriefPage() {
   const [report, setReport] = useState<GeneratedReport | null>(null);
@@ -97,14 +96,6 @@ export default function DailyBriefPage() {
 
       const data: GeneratedReport = await res.json();
       setReport(data);
-
-      saveSignal({
-        type: 'daily_brief',
-        label: 'Daily Brief',
-        signal: data.signal,
-        confidence: data.confidence,
-        timestamp: new Date().toISOString(),
-      });
     } catch (e) {
       setError(String(e));
     } finally {

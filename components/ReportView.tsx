@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import {
-  TrendingUp, TrendingDown, Minus, AlertTriangle, Zap,
+  TrendingUp, TrendingDown, Minus, AlertTriangle, Zap, Send,
   ChevronRight, Copy, Check, Wallet, Loader2, CheckCircle2, XCircle,
   BookOpen,
 } from 'lucide-react';
@@ -11,6 +11,9 @@ import {
   isMetaMaskAvailable, connectWallet, getConnectedAccount,
   signAuthNonce, generateClOrdID, formatAddress,
 } from '@/lib/eip712';
+import { getAuthSession, signInWithEthereum } from '@/lib/auth/client';
+import { signCall } from '@/lib/calls-eip712';
+import { HORIZON_OPTIONS_HOURS, type HorizonHours } from '@/lib/scoring';
 import ETFFlowChart from './ETFFlowChart';
 
 interface Props {
@@ -21,6 +24,7 @@ interface Props {
 export default function ReportView({ report, onTrade }: Props) {
   const [copied, setCopied] = useState(false);
   const [showTradeGate, setShowTradeGate] = useState(false);
+  const [showPublishGate, setShowPublishGate] = useState(false);
 
   const signalColor = {
     BULLISH: 'text-emerald-400 border-emerald-500/30 bg-emerald-500/10',
@@ -126,6 +130,32 @@ export default function ReportView({ report, onTrade }: Props) {
       <div className="px-6 py-4 bg-blue-500/5 border-t border-blue-500/10">
         <h3 className="text-xs text-blue-400/70 uppercase tracking-wider mb-2">Actionable Insight</h3>
         <p className="text-sm text-white/70 leading-relaxed">{report.actionableInsight}</p>
+      </div>
+
+      {/* Publish as Verified Call */}
+      <div className="px-6 py-5 border-t border-white/10 bg-white/[0.02]">
+        <div className="flex items-center justify-between flex-wrap gap-4">
+          <div>
+            <div className="text-xs text-white/40 mb-1">Analyst Feed · On-chain accountability</div>
+            <p className="text-sm text-white/70">
+              Sign this {report.signal} call with your wallet and publish it to the public feed —
+              it&apos;s scored automatically against real SoDEX prices once the horizon elapses.
+            </p>
+          </div>
+          <button
+            onClick={() => setShowPublishGate(v => !v)}
+            className="flex items-center gap-2 bg-violet-600 hover:bg-violet-500 px-4 py-2 rounded-lg text-sm font-semibold transition-colors flex-shrink-0">
+            <Send size={14} /> Publish Call
+          </button>
+        </div>
+
+        {showPublishGate && (
+          <PublishCallGate
+            report={report}
+            onDone={() => setShowPublishGate(false)}
+            onCancel={() => setShowPublishGate(false)}
+          />
+        )}
       </div>
 
       {/* Trade Gate */}
@@ -465,6 +495,183 @@ function EIP712TradeGate({ idea, onDone, onCancel }: {
             <><Loader2 size={14} className="animate-spin" /> Submitting to SoDEX...</>
           ) : (
             <><Zap size={14} /> Sign &amp; Submit Order</>
+          )}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Publish as Verified Call ──────────────────────────────────────────────────
+
+type PublishStatus = 'idle' | 'signing-in' | 'signing' | 'submitting' | 'success' | 'error';
+
+function PublishCallGate({ report, onDone, onCancel }: {
+  report: GeneratedReport;
+  onDone: () => void;
+  onCancel: () => void;
+}) {
+  const [wallet, setWallet] = useState<string | null>(null);
+  const [status, setStatus] = useState<PublishStatus>('idle');
+  const [errorMsg, setErrorMsg] = useState('');
+  const [horizonHours, setHorizonHours] = useState<HorizonHours>(72);
+  const hasMM = isMetaMaskAvailable();
+
+  const asset = report.tradeIdea?.asset ?? 'MARKET';
+
+  useEffect(() => {
+    getAuthSession().then(s => setWallet(s.walletAddress));
+  }, []);
+
+  const handleSignIn = async () => {
+    setStatus('signing-in');
+    setErrorMsg('');
+    try {
+      const addr = await signInWithEthereum();
+      setWallet(addr);
+      setStatus('idle');
+    } catch (e) {
+      setErrorMsg(String(e));
+      setStatus('error');
+    }
+  };
+
+  const handlePublish = async () => {
+    if (!wallet) return;
+    setStatus('signing');
+    setErrorMsg('');
+    try {
+      const payload = {
+        asset,
+        direction: report.signal,
+        confidence: report.confidence,
+        targetPrice: '',
+        thesisText: report.executiveSummary,
+        horizonHours,
+        publishedAt: Math.floor(Date.now() / 1000),
+      };
+      const signature = await signCall(wallet, payload);
+
+      setStatus('submitting');
+      const res = await fetch('/api/calls', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...payload, signature }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error ?? `Publish failed: ${res.status}`);
+      }
+
+      setStatus('success');
+      setTimeout(onDone, 2000);
+    } catch (e) {
+      setErrorMsg(String(e));
+      setStatus('error');
+    }
+  };
+
+  if (status === 'success') {
+    return (
+      <div className="mt-4 p-4 border border-emerald-500/30 bg-emerald-500/5 rounded-lg flex items-center gap-3">
+        <CheckCircle2 size={20} className="text-emerald-400 flex-shrink-0" />
+        <div>
+          <p className="text-sm font-semibold text-emerald-400">Call published to the Analyst Feed</p>
+          <p className="text-xs text-white/40 mt-0.5">
+            It resolves automatically in {horizonHours}h against live SoDEX prices.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-4 p-4 border border-violet-500/30 bg-violet-500/5 rounded-lg space-y-4">
+      <div className="flex items-start gap-3">
+        <Send size={16} className="text-violet-400 flex-shrink-0 mt-0.5" />
+        <div>
+          <p className="text-sm font-semibold text-violet-400">EIP-712 Signed Call</p>
+          <p className="text-xs text-white/50 mt-0.5">
+            Your signature covers the exact thesis text, direction, confidence and horizon — the call can&apos;t be edited after signing.
+          </p>
+        </div>
+      </div>
+
+      <div className="bg-white/5 rounded-lg p-3 text-xs space-y-1.5">
+        <div className="flex justify-between">
+          <span className="text-white/40">Asset</span><span className="font-mono">{asset}</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-white/40">Direction</span>
+          <span className={
+            report.signal === 'BULLISH' ? 'text-emerald-400 font-semibold' :
+            report.signal === 'BEARISH' ? 'text-rose-400 font-semibold' : 'text-amber-400 font-semibold'
+          }>{report.signal}</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-white/40">Confidence</span><span>{report.confidence}%</span>
+        </div>
+      </div>
+
+      <div>
+        <label className="text-xs text-white/40 mb-1 block">Resolution horizon</label>
+        <div className="flex gap-2">
+          {HORIZON_OPTIONS_HOURS.map(h => (
+            <button key={h} onClick={() => setHorizonHours(h)}
+              className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${
+                horizonHours === h
+                  ? 'bg-violet-600/30 border-violet-500/40 text-violet-300'
+                  : 'border-white/10 text-white/40 hover:border-white/30'
+              }`}>
+              {h < 24 ? `${h}h` : `${h / 24}d`}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {!hasMM ? (
+        <div className="text-xs text-white/40 border border-white/10 rounded p-3">
+          MetaMask not detected.{' '}
+          <a href="https://metamask.io" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">
+            Install MetaMask
+          </a>{' '}
+          to publish signed calls.
+        </div>
+      ) : wallet ? (
+        <div className="flex items-center gap-2 text-xs text-emerald-400">
+          <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+          Signed in: {formatAddress(wallet)}
+        </div>
+      ) : (
+        <button onClick={handleSignIn} disabled={status === 'signing-in'}
+          className="w-full flex items-center justify-center gap-2 border border-white/20 hover:border-white/40 py-2 rounded-lg text-sm transition-colors disabled:opacity-50">
+          {status === 'signing-in' ? <Loader2 size={14} className="animate-spin" /> : <Wallet size={14} />}
+          Sign in with Ethereum
+        </button>
+      )}
+
+      {status === 'error' && (
+        <div className="flex items-start gap-2 text-xs text-rose-400 bg-rose-500/5 border border-rose-500/20 rounded p-2">
+          <XCircle size={14} className="flex-shrink-0 mt-0.5" />
+          <span>{errorMsg}</span>
+        </div>
+      )}
+
+      <div className="flex gap-3">
+        <button onClick={onCancel} className="px-4 py-2 text-sm border border-white/20 hover:border-white/40 rounded-lg transition-colors">
+          Cancel
+        </button>
+        <button
+          onClick={handlePublish}
+          disabled={!wallet || status === 'signing' || status === 'submitting'}
+          className="flex-1 flex items-center justify-center gap-2 px-4 py-2 text-sm bg-violet-600 hover:bg-violet-500 rounded-lg font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+          {status === 'signing' ? (
+            <><Loader2 size={14} className="animate-spin" /> Waiting for MetaMask...</>
+          ) : status === 'submitting' ? (
+            <><Loader2 size={14} className="animate-spin" /> Publishing...</>
+          ) : (
+            <><Send size={14} /> Sign &amp; Publish</>
           )}
         </button>
       </div>

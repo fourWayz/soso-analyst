@@ -6,7 +6,6 @@ import { BarChart2, Loader2, RefreshCw, Search } from 'lucide-react';
 import ReportView from '@/components/ReportView';
 import TokenEconomics from '@/components/TokenEconomics';
 import type { GeneratedReport, TradeIdea } from '@/lib/claude';
-import { saveSignal } from '@/lib/signals';
 
 const PRESET_ASSETS = [
   { id: 'bitcoin', symbol: 'BTC', sodexSymbol: 'vBTC_vUSDC' },
@@ -89,17 +88,6 @@ export default function AssetDivePage() {
 
       const generated: GeneratedReport = await res.json();
       setReport(generated);
-
-      saveSignal({
-        type: 'asset_deep_dive',
-        label: assetSymbol,
-        signal: generated.signal,
-        confidence: generated.confidence,
-        priceAtGeneration: input.marketData?.price,
-        symbol: assetSymbol,
-        targetSymbol: generated.tradeIdea?.targetSymbol ?? (customId ? undefined : selectedAsset.sodexSymbol),
-        timestamp: new Date().toISOString(),
-      });
     } catch (e) {
       setError(String(e));
     } finally {
