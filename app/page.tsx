@@ -54,7 +54,7 @@ export default function Home() {
             <BarChart2 size={14} />
           </div>
           <span className="font-bold text-lg tracking-tight">SoSo Analyst</span>
-          <span className="text-xs text-emerald-400 border border-emerald-400/30 rounded px-1.5 py-0.5 ml-1">WAVE 2</span>
+          {/* <span className="text-xs text-emerald-400 border border-emerald-400/30 rounded px-1.5 py-0.5 ml-1">WAVE 2</span> */}
         </div>
         <div className="flex items-center gap-6 text-sm text-white/60">
           <Link href="/dashboard" className="hover:text-white transition-colors">Dashboard</Link>
