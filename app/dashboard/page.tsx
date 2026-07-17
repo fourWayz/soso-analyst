@@ -114,6 +114,7 @@ export default function Dashboard() {
         </div>
         <div className="flex items-center gap-4">
           <Link href="/feed" className="text-xs text-blue-400/70 hover:text-blue-400 transition-colors">Analyst Feed</Link>
+          <Link href="/leaderboard" className="text-xs text-blue-400/70 hover:text-blue-400 transition-colors">Leaderboard</Link>
           {lastUpdated && (
             <span className="text-xs text-white/30">Updated {lastUpdated.toLocaleTimeString()}</span>
           )}
