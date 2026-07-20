@@ -102,8 +102,10 @@ const QUERY_CORPUS_TOOL: Anthropic.Tool = {
   name: 'query_verified_corpus',
   description:
     "Look up historical base rates from SoSo Analyst's verified call corpus for an asset — sample size, average return, and % of historical calls where price moved positive, at a given lookahead horizon. Use this to ground directional confidence in real outcomes rather than asserting a base rate from prior knowledge.",
+  strict: true,
   input_schema: {
     type: 'object',
+    additionalProperties: false,
     properties: {
       asset: { type: 'string', description: 'Asset symbol, e.g. BTC, ETH, SOL, LINK' },
       horizon_bucket: {
@@ -119,8 +121,14 @@ const QUERY_CORPUS_TOOL: Anthropic.Tool = {
 const SUBMIT_REPORT_TOOL: Anthropic.Tool = {
   name: 'submit_report',
   description: 'Finalize and submit the research report. Call this exactly once, when ready.',
+  // Strict mode makes the API itself validate tool_use.input against this
+  // schema before returning it — without it, the schema is only a
+  // suggestion, and a malformed response (e.g. sections as an object
+  // instead of an array) reaches the client and crashes rendering.
+  strict: true,
   input_schema: {
     type: 'object',
+    additionalProperties: false,
     properties: {
       title: { type: 'string', description: 'Compelling headline' },
       subtitle: { type: 'string', description: 'One-line context' },
@@ -132,6 +140,7 @@ const SUBMIT_REPORT_TOOL: Anthropic.Tool = {
         type: 'array',
         items: {
           type: 'object',
+          additionalProperties: false,
           properties: {
             heading: { type: 'string' },
             content: { type: 'string', description: '2-4 sentences' },
@@ -144,6 +153,7 @@ const SUBMIT_REPORT_TOOL: Anthropic.Tool = {
       actionableInsight: { type: 'string', description: 'Specific, data-backed conclusion' },
       tradeIdea: {
         type: 'object',
+        additionalProperties: false,
         properties: {
           asset: { type: 'string', description: 'e.g. BTC' },
           direction: { type: 'string', enum: ['LONG', 'SHORT'] },
@@ -190,6 +200,7 @@ export async function generateReport(input: ReportInput): Promise<GeneratedRepor
     const submitBlock = toolUseBlocks.find((b) => b.name === 'submit_report');
     if (submitBlock) {
       const report = submitBlock.input as GeneratedReport;
+      assertValidReport(report);
       await logReport(input, report, totalInputTokens, totalOutputTokens);
       return report;
     }
@@ -213,6 +224,21 @@ export async function generateReport(input: ReportInput): Promise<GeneratedRepor
   }
 
   throw new Error('Claude did not submit a report within the tool-use iteration limit');
+}
+
+// Belt-and-suspenders on top of `strict: true` — fail loudly server-side with
+// a clear message rather than let a malformed shape reach the client and
+// crash rendering with an opaque "X.map is not a function".
+function assertValidReport(report: GeneratedReport): void {
+  if (!Array.isArray(report.sections)) {
+    throw new Error(`submit_report returned non-array sections: ${JSON.stringify(report.sections)}`);
+  }
+  if (!Array.isArray(report.keyRisks)) {
+    throw new Error(`submit_report returned non-array keyRisks: ${JSON.stringify(report.keyRisks)}`);
+  }
+  if (!Array.isArray(report.citations)) {
+    throw new Error(`submit_report returned non-array citations: ${JSON.stringify(report.citations)}`);
+  }
 }
 
 async function logReport(
